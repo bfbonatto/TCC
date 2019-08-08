@@ -6,12 +6,17 @@ import qualified Data.Map.Lazy as Map
 
 type Var = String
 
+
 data Binop = Plus | Minus | Times | Mod | Div | And | Or
 
 optype :: Binop -> A
 optype And = ABool
 optype Or  = ABool
 optype _   = AInt
+
+(>>>) :: Maybe a -> Maybe a -> Maybe a
+Nothing >>> a = a
+a >>> _       = a
 
 instance Show Binop where
 	show Plus = "+"
@@ -63,30 +68,53 @@ instance Show Expression where
 data A = Unit | ABool | AInt | L A | T A | ATuple A A deriving (Eq, Show)
 data F = Arrow A A deriving (Eq, Show)
 
+data Type = SimpleType A | FirstOrderType F deriving (Eq, Show)
+
 type TypingContext = (Map.Map Var A)
 type Signature = (Map.Map Var F)
 
-etype :: Signature -> TypingContext -> Expression -> Maybe A
-etype _ _ EmptyTuple = Just $ ATuple Unit Unit
-etype _ _ ETrue = Just ABool
-etype _ _ EFalse = Just ABool
-etype _ _ (ENumber _) = Just AInt
-etype _ tc (EVar x) = Map.lookup x tc
+substitution :: Var -> Expression -> Var -> Expression
+substitution = undefined
+
+etype :: Signature -> TypingContext -> Expression -> Maybe Type
+etype _ _ EmptyTuple    = return $ SimpleType (ATuple Unit Unit)
+etype _ _ ETrue         = return $ SimpleType ABool
+etype _ _ EFalse        = return $ SimpleType ABool
+etype _ _ (ENumber _)   = return $ SimpleType AInt
+etype _ _ ENil          = return $ SimpleType (L Unit)
+etype _ _ ELeaf         = return $ SimpleType (T Unit)
+etype sig tc (EVar x)   = (Map.lookup x sig >>= Just . FirstOrderType) >>> (Map.lookup x tc >>= Just . SimpleType)
+
+etype sig tc (EApp x y) = do
+	(Arrow t1 t2) <- Map.lookup x sig
+	ty <- Map.lookup y tc
+	if t1 == ty then return (SimpleType t2) else Nothing
+
+etype _ tc (ETuple x y) = do
+	tx <- Map.lookup x tc
+	ty <- Map.lookup y tc
+	return (SimpleType (ATuple tx ty))
+
+etype _ tc (ECons x y) = do
+	tx <- Map.lookup x tc
+	ty <- Map.lookup y tc
+	if tx == ty then return $ SimpleType $ L tx else Nothing
+
+etype _ tc (ENode x y z) = do
+	tx <- Map.lookup x tc
+	(T ty) <- Map.lookup y tc
+	(T tz) <- Map.lookup z tc
+	if tx == ty && tx == tz then return (SimpleType (T tx)) else Nothing
 
 etype _ tc (EOp x op y) = do
 	tx <- Map.lookup x tc
 	ty <- Map.lookup y tc
-	let top = optype op
-	if tx == ty && tx == top then return top else Nothing
-
-etype sig tc (EApp f x) = do
-	(Arrow a b) <- Map.lookup f sig
-	tx <- Map.lookup x tc
-	if tx == a then return b else Nothing
+	let t = optype op
+	if tx == t && ty == t then return (SimpleType t) else Nothing
 
 etype sig tc (ELet x e1 e2) = do
-	a <- etype sig tc e1
-	let tc' = Map.insert x a tc
+	(SimpleType tx) <- etype sig tc e1
+	let tc' = Map.insert x tx tc
 	etype sig tc' e2
 
 etype sig tc (EIf x e1 e2) = do
@@ -95,41 +123,27 @@ etype sig tc (EIf x e1 e2) = do
 	t2 <- etype sig tc e2
 	if t1 == t2 then return t1 else Nothing
 
-etype _ tc (ETuple x y) = do
-	tx <- Map.lookup x tc
-	ty <- Map.lookup y tc
-	return $ ATuple tx ty
-
-etype _ _ ENil = Just $ L Unit
-
-etype _ tc (ECons x y) = do
-	tx <- Map.lookup x tc
-	ty <- Map.lookup y tc
-	if tx == ty || ty == L Unit then return (L tx) else Nothing
-
-etype _ _ ELeaf = Just $ T Unit
-
-etype _ tc (ENode x xl xr) = do
-	a <- Map.lookup x tc
-	(T tl) <- Map.lookup xl tc
-	(T tr) <- Map.lookup xr tc
-	if tl == tr && (tl == Unit || tl == a) then return (T a) else Nothing
-
 etype sig tc (EMatchTuple x x1 x2 e) = do
-	(ATuple a1 a2) <- Map.lookup x tc
-	let tc' = Map.insert x1 a1 $ Map.insert x2 a2 tc
+	t1 <- Map.lookup x1 tc
+	t2 <- Map.lookup x2 tc
+	let tc' = Map.insert x (ATuple t1 t2) tc
 	etype sig tc' e
 
 etype sig tc (EMatchList x e1 xh xt e2) = do
-	(L a) <- Map.lookup x tc
-	t1 <- etype sig tc e1
-	let tc' = Map.insert xh a $ Map.insert xt (L a) tc
-	t2 <- etype sig tc' e2
-	if t1 == t2 then return t1 else Nothing
+	te1 <- etype sig tc e1
+	th <- Map.lookup xh tc
+	(L tt) <- Map.lookup xt tc
+	let tc' = Map.insert x (L th) tc
+	te2 <- etype sig tc' e2
+	if te1 == te2 && th == tt then return te1 else Nothing
 
 etype sig tc (EMatchTree x e1 x0 x1 x2 e2) = do
-	(T a) <- Map.lookup x tc
-	t1 <- etype sig tc e1
-	let tc' = Map.insert x0 a $ Map.insert x1 (T a) $ Map.insert x2 (T a) tc
-	t2 <- etype sig tc' e2
-	if t1 == t2 then return t1 else Nothing
+	te1 <- etype sig tc e1
+	tn <- Map.lookup x0 tc
+	(T tl) <- Map.lookup x1 tc
+	(T tr) <- Map.lookup x2 tc
+	let tc' = Map.insert x (T tn) tc
+	te2 <- etype sig tc' e2
+	if te1 == te2 && tn == tl && tn == tr then return te1 else Nothing
+
+
