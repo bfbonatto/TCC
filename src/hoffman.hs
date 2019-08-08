@@ -28,23 +28,23 @@ instance Show Binop where
 	show Or = "or"
 
 data Expression =
-	EmptyTuple												--
-	| ETrue													--
-	| EFalse												--
-	| ENumber Int											--
-	| EVar Var												--
-	| EOp Var Binop Var										--
-	| EApp Var Var											--
-	| ELet Var Expression Expression						--
-	| EIf Var Expression Expression							--
-	| ETuple Var Var										--
-	| ENil													--
-	| ECons Var Var											--
-	| ELeaf													--
-	| ENode Var Var Var										--
-	| EMatchTuple Var Var Var Expression					--
-	| EMatchList Var Expression Var Var Expression
-	| EMatchTree Var Expression Var Var Var Expression
+	EmptyTuple												
+	| ETrue													
+	| EFalse												
+	| ENumber Int											
+	| EVar Var												
+	| EOp Var Binop Var										
+	| EApp Var Var											
+	| ELet Var Expression Expression						
+	| EIf Var Expression Expression							
+	| ETuple Var Var										
+	| ENil													
+	| ECons Var Var											
+	| ELeaf													
+	| ENode Var Var Var										
+	| EMatchTuple Var Var Var Expression					
+	| EMatchList Var Expression Var Var Expression			
+	| EMatchTree Var Expression Var Var Var Expression		 
 
 instance Show Expression where
 	show EmptyTuple = "()"
@@ -133,5 +133,17 @@ etype sig tc (EMatchList x e1 xh xt e2) = do
 	te1 <- etype sig tc e1
 	th <- Map.lookup xh tc
 	(L tt) <- Map.lookup xt tc
-	te2 <- etype sig tc e2
+	let tc' = Map.insert x (L th) tc
+	te2 <- etype sig tc' e2
 	if te1 == te2 && th == tt then return te1 else Nothing
+
+etype sig tc (EMatchTree x e1 x0 x1 x2 e2) = do
+	te1 <- etype sig tc e1
+	tn <- Map.lookup x0 tc
+	(T tl) <- Map.lookup x1 tc
+	(T tr) <- Map.lookup x2 tc
+	let tc' = Map.insert x (T tn) tc
+	te2 <- etype sig tc' e2
+	if te1 == te2 && tn == tl && tn == tr then return te1 else Nothing
+
+
