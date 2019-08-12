@@ -64,72 +64,98 @@ data A = Unit | ABool | AInt | L A | T A | ATuple A A deriving (Eq, Show)
 data F = Arrow A A deriving (Eq, Show)
 
 type TypingContext = (Map.Map Var A)
-type Signature = (Map.Map Var F)
+type Signature     = (Map.Map Var F)
 
-etype :: Signature -> TypingContext -> Expression -> Maybe A
-etype _ _ EmptyTuple = Just $ ATuple Unit Unit
-etype _ _ ETrue = Just ABool
-etype _ _ EFalse = Just ABool
-etype _ _ (ENumber _) = Just AInt
-etype _ tc (EVar x) = Map.lookup x tc
+typecheck :: Signature -> TypingContext -> Expression -> Maybe A
+typecheck _ _ EmptyTuple = Just $ ATuple Unit Unit
+typecheck _ _ ETrue = Just ABool
+typecheck _ _ EFalse = Just ABool
+typecheck _ _ (ENumber _) = Just AInt
+typecheck _ tc (EVar x) = Map.lookup x tc
 
-etype _ tc (EOp x op y) = do
+typecheck _ tc (EOp x op y) = do
 	tx <- Map.lookup x tc
 	ty <- Map.lookup y tc
 	let top = optype op
 	if tx == ty && tx == top then return top else Nothing
 
-etype sig tc (EApp f x) = do
+typecheck sig tc (EApp f x) = do
 	(Arrow a b) <- Map.lookup f sig
 	tx <- Map.lookup x tc
 	if tx == a then return b else Nothing
 
-etype sig tc (ELet x e1 e2) = do
-	a <- etype sig tc e1
+typecheck sig tc (ELet x e1 e2) = do
+	a <- typecheck sig tc e1
 	let tc' = Map.insert x a tc
-	etype sig tc' e2
+	typecheck sig tc' e2
 
-etype sig tc (EIf x e1 e2) = do
+typecheck sig tc (EIf x e1 e2) = do
 	ABool <- Map.lookup x tc
-	t1 <- etype sig tc e1
-	t2 <- etype sig tc e2
+	t1 <- typecheck sig tc e1
+	t2 <- typecheck sig tc e2
 	if t1 == t2 then return t1 else Nothing
 
-etype _ tc (ETuple x y) = do
+typecheck _ tc (ETuple x y) = do
 	tx <- Map.lookup x tc
 	ty <- Map.lookup y tc
 	return $ ATuple tx ty
 
-etype _ _ ENil = Just $ L Unit
+typecheck _ _ ENil = Just $ L Unit
 
-etype _ tc (ECons x y) = do
+typecheck _ tc (ECons x y) = do
 	tx <- Map.lookup x tc
 	ty <- Map.lookup y tc
 	if tx == ty || ty == L Unit then return (L tx) else Nothing
 
-etype _ _ ELeaf = Just $ T Unit
+typecheck _ _ ELeaf = Just $ T Unit
 
-etype _ tc (ENode x xl xr) = do
+typecheck _ tc (ENode x xl xr) = do
 	a <- Map.lookup x tc
 	(T tl) <- Map.lookup xl tc
 	(T tr) <- Map.lookup xr tc
 	if tl == tr && (tl == Unit || tl == a) then return (T a) else Nothing
 
-etype sig tc (EMatchTuple x x1 x2 e) = do
+typecheck sig tc (EMatchTuple x x1 x2 e) = do
 	(ATuple a1 a2) <- Map.lookup x tc
 	let tc' = Map.insert x1 a1 $ Map.insert x2 a2 tc
-	etype sig tc' e
+	typecheck sig tc' e
 
-etype sig tc (EMatchList x e1 xh xt e2) = do
+typecheck sig tc (EMatchList x e1 xh xt e2) = do
 	(L a) <- Map.lookup x tc
-	t1 <- etype sig tc e1
+	t1 <- typecheck sig tc e1
 	let tc' = Map.insert xh a $ Map.insert xt (L a) tc
-	t2 <- etype sig tc' e2
+	t2 <- typecheck sig tc' e2
 	if t1 == t2 then return t1 else Nothing
 
-etype sig tc (EMatchTree x e1 x0 x1 x2 e2) = do
+typecheck sig tc (EMatchTree x e1 x0 x1 x2 e2) = do
 	(T a) <- Map.lookup x tc
-	t1 <- etype sig tc e1
+	t1 <- typecheck sig tc e1
 	let tc' = Map.insert x0 a $ Map.insert x1 (T a) $ Map.insert x2 (T a) tc
-	t2 <- etype sig tc' e2
+	t2 <- typecheck sig tc' e2
 	if t1 == t2 then return t1 else Nothing
+
+type Loc = Int
+
+data Value =
+	VLoc Loc
+	| VBool Bool
+	| VInt Int
+	| VNull
+	| VPair (Value, Value)
+	deriving (Eq, Show)
+
+type Heap  = Map.Map Loc Value
+type Stack = Map.Map Var Value
+
+newtype Energy = Energy (Rational, Rational) deriving (Eq, Show)
+
+instance Semigroup Energy where
+	Energy (q, q') <> Energy (p, p')
+		| q' <= p = Energy (q + p - q', p')
+		| otherwise = Energy (q, p' + q' - p)
+
+instance Monoid Energy where
+	mempty = Energy (0, 0)
+
+bigstep :: Stack -> Heap -> Expression -> Maybe (Value, Heap, Energy)
+bigstep = undefined
