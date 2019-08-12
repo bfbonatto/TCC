@@ -3,6 +3,7 @@
 module Hoffman where
 
 import qualified Data.Map.Lazy as Map
+import Data.Maybe (fromMaybe)
 
 type Var = String
 
@@ -158,4 +159,69 @@ instance Monoid Energy where
 	mempty = Energy (0, 0)
 
 bigstep :: Stack -> Heap -> Expression -> Maybe (Value, Heap, Energy)
-bigstep = undefined
+bigstep v h (EVar x) = do
+	xval <- Map.lookup x v
+	return (xval, h, kconst "var")
+
+bigstep _ h EmptyTuple = return (VNull, h, kconst "unit")
+
+bigstep _ h (ENumber n) = return (VInt n, h, kconst "int")
+
+bigstep _ h ETrue = return (VBool True, h, kconst "bool")
+bigstep _ h EFalse = return (VBool False, h, kconst "bool")
+
+bigstep v h (EApp f x) = do
+	v' <- Map.lookup x v
+	undefined
+
+bigstep v h (EOp x1 Plus x2) = do
+	(VInt v1) <- Map.lookup x1 v
+	(VInt v2) <- Map.lookup x2 v
+	let v' = v1 + v2
+	return (VInt v', h, kconst "plus")
+bigstep v h (EOp x1 Minus x2) = do
+	(VInt v1) <- Map.lookup x1 v
+	(VInt v2) <- Map.lookup x2 v
+	let v' = v1 - v2
+	return (VInt v', h, kconst "minus")
+bigstep v h (EOp x1 Times x2) = do
+	(VInt v1) <- Map.lookup x1 v
+	(VInt v2) <- Map.lookup x2 v
+	let v' = v1 * v2
+	return (VInt v', h, kconst "times")
+bigstep v h (EOp x1 Mod x2) = do
+	(VInt v1) <- Map.lookup x1 v
+	(VInt v2) <- Map.lookup x2 v
+	let v' = v1 `mod` v2
+	return (VInt v', h, kconst "mod")
+bigstep v h (EOp x1 Div x2) = do
+	(VInt v1) <- Map.lookup x1 v
+	(VInt v2) <- Map.lookup x2 v
+	let v' = v1 `div` v2
+	return (VInt v', h, kconst "div")
+
+bigstep v h (EOp x1 And x2) = do
+	(VBool v1) <- Map.lookup x1 v
+	(VBool v2) <- Map.lookup x2 v
+	let v' = v1 && v2
+	return (VBool v', h, kconst "and")
+bigstep v h (EOp x1 Or x2) = do
+	(VBool v1) <- Map.lookup x1 v
+	(VBool v2) <- Map.lookup x2 v
+	let v' = v1 || v2
+	return (VBool v', h, kconst "or")
+
+bigstep v h (EIf x e1 e2)
+	| Map.lookup x v == Just (VBool True) = Just (v1', h1', kconst "iftrue1" <> q1 <> kconst "iftrue2")
+	| otherwise = Just (v2', h2', kconst "iffalse1" <> q2 <> kconst "iffalse2")
+		where
+			Just (v1', h1', q1) = bigstep v h e1
+			Just (v2', h2', q2) = bigstep v h e2
+
+
+
+kcosts :: Map.Map String Energy
+kcosts = undefined
+
+kconst :: String -> Energy
+kconst s = fromMaybe mempty $ Map.lookup s kcosts
