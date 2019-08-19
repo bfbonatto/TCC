@@ -93,6 +93,3 @@ typecheck (TermIf t t1 t2)	= case (typecheck t, typecheck t1, typecheck t2) of
 								(_, Just LBool, Just LBool)	-> Just LBool
 								(_,_,_)						-> Nothing
 
-
-main :: IO ()
-main = undefined

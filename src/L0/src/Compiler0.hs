@@ -4,6 +4,7 @@ module Compiler0 where
 
 import qualified L0
 import qualified SSM
+import Text.ParserCombinators.ReadP
 
 compile :: L0.Term -> Maybe [SSM.Instruction]
 compile term = case L0.typecheck term of
@@ -23,6 +24,3 @@ step (L0.TermIf t1 t2 t3)	= c1 ++ [SSM.JumpIfZero $ length c2 + 2] ++ c2 ++ [SSM
 		c2 = step t2
 		c3 = step t3
 
-
-main :: IO ()
-main = undefined

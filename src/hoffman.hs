@@ -146,6 +146,10 @@ data Value =
 	deriving (Eq, Show)
 
 type Heap  = Map.Map Loc Value
+
+freeLocation :: Heap -> Loc
+freeLocation = undefined
+
 type Stack = Map.Map Var Value
 
 newtype Energy = Energy (Rational, Rational) deriving (Eq, Show)
@@ -211,17 +215,63 @@ bigstep v h (EOp x1 Or x2) = do
 	let v' = v1 || v2
 	return (VBool v', h, kconst "or")
 
-bigstep v h (EIf x e1 e2)
-	| Map.lookup x v == Just (VBool True) = Just (v1', h1', kconst "iftrue1" <> q1 <> kconst "iftrue2")
-	| otherwise = Just (v2', h2', kconst "iffalse1" <> q2 <> kconst "iffalse2")
-		where
-			Just (v1', h1', q1) = bigstep v h e1
-			Just (v2', h2', q2) = bigstep v h e2
+
+bigstep v h (ELet x e1 e2) = do
+	(v1, h1, q) <- bigstep v h e1
+	let v' = Map.insert x v1 v
+	(v2, h2, p) <- bigstep v' h1 e2
+	return (v2, h2, kconst "let1" <> q <> kconst "let2" <> p <> kconst "let3")
+
+bigstep v h (ETuple x1 x2) = do
+	vx1 <- Map.lookup x1 v
+	vx2 <- Map.lookup x2 v
+	return (VPair (vx1, vx2), h, kconst "pair")
+
+bigstep v h (EMatchTuple x x1 x2 e) = do
+	(VPair (v1, v2)) <- Map.lookup x v
+	let v' = Map.insert x1 v1 $ Map.insert x2 v2 v
+	(value, h', q) <- bigstep v' h e
+	return (value, h', kconst "matchpair1" <> q <> kconst "matchpair2")
+
+bigstep _ h ENil = return (VNull, h, kconst "nil")
+
+bigstep v h (ECons xh xt) = do
+	vh <- Map.lookup xh v
+	vt <- Map.lookup xt v
+	let value = VPair (vh, vt)
+	let l = freeLocation h
+	let h' = Map.insert l value h
+	return (VLoc l, h', kconst "cons")
+
+bigstep v h (EIf x et ef)
+	| Just (VBool True) <- Map.lookup x v
+	, Just (vt, h', q) <- bigstep v h et = return (vt, h', kconst "iftrue1" <> q <> kconst "iftrue2")
+	| Just (VBool False) <- Map.lookup x v
+	, Just (vf, h', q) <- bigstep v h ef = return (vf, h', kconst "iffalse1" <> q <> kconst "iffalse2")
+	|otherwise = Nothing
+
+bigstep v h (EMatchList x e1 xh xt e2)
+	| Just VNull <- Map.lookup x v
+	, Just (value, h', q) <- bigstep v h e1 
+	= Just (value, h', kconst "matchnil1" <> q <> kconst "matchnil2")
+
+	| Just (VLoc l) <- Map.lookup x v
+	, Just (VPair (vh, vt)) <- Map.lookup l h
+	, let v' = Map.insert xh vh $ Map.insert xt vt v
+	, Just (value, h', q) <- bigstep v' h e2
+	= Just (value, h', kconst "matchcons1" <> q <> kconst "matchcons2")
+	
+bigstep _ h ELeaf = Just (VNull, h, kconst "leaf")
+
+bigstep v h (ENode x0 x1 x2) = do
+	vx0 <- Map.lookup x0 v
+	vx1 <- Map.lookup x1 v
+	vx2 <- Map.lookup x2 v
+	let l = freeLocation h
+	let value = VPair (vx0, VPair (vx1, vx2))
+	return (VLoc l, Map.insert l value h, kconst "node")
 
 
-
-kcosts :: Map.Map String Energy
-kcosts = undefined
 
 kconst :: String -> Energy
-kconst s = fromMaybe mempty $ Map.lookup s kcosts
+kconst = const mempty
