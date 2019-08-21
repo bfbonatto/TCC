@@ -3,7 +3,6 @@
 module Hoffman where
 
 import qualified Data.Map.Lazy as Map
-import Data.Maybe (fromMaybe)
 
 type Var = String
 
@@ -176,6 +175,7 @@ bigstep _ h EFalse = return (VBool False, h, kconst "bool")
 
 bigstep v h (EApp f x) = do
 	v' <- Map.lookup x v
+	-- Just (value, h', kconst <> q <> kconst)
 	undefined
 
 bigstep v h (EOp x1 Plus x2) = do
@@ -260,6 +260,8 @@ bigstep v h (EMatchList x e1 xh xt e2)
 	, let v' = Map.insert xh vh $ Map.insert xt vt v
 	, Just (value, h', q) <- bigstep v' h e2
 	= Just (value, h', kconst "matchcons1" <> q <> kconst "matchcons2")
+
+	| otherwise = Nothing
 	
 bigstep _ h ELeaf = Just (VNull, h, kconst "leaf")
 
@@ -271,7 +273,18 @@ bigstep v h (ENode x0 x1 x2) = do
 	let value = VPair (vx0, VPair (vx1, vx2))
 	return (VLoc l, Map.insert l value h, kconst "node")
 
+bigstep v h (EMatchTree x e1 x0 x1 x2 e2)
+	| Just VNull <- Map.lookup x v
+	, Just (value, h', q) <- bigstep v h e1
+	= Just (value, h', kconst "matchtreeleaf1" <> q <> kconst "matchtreeleaf2")
 
+	| Just (VLoc l) <- Map.lookup x v
+	, Just (VPair (v0, VPair (v1, v2))) <- Map.lookup l h
+	, let v' = Map.insert x0 v0 $ Map.insert x1 v1 $ Map.insert x2 v2 v
+	, Just (value, h', q) <- bigstep v' h e2
+	= Just (value, h', kconst "matchtreenode1" <> q <> kconst "matchtreenode2")
+
+	| otherwise = Nothing
 
 kconst :: String -> Energy
 kconst = const mempty

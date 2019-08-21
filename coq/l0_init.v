@@ -65,16 +65,6 @@ where "A -*-> B" := (multistep A B).
 
 
 
-Lemma l3 : forall t t': term, t -*-> t' ->
-  (forall u, (t = succ u) ->
-    exists u', (t' = succ u') /\ (u -*-> u')).
-Proof.
-  Admitted.
-
-
-
-
-
 
 (* Forma normal *)
 Definition NF (t:term)    : Prop :=  not (exists t', t ---> t').
@@ -181,7 +171,7 @@ Lemma nv_is_nat : forall t : term , nv t -> t ===> typeNat.
 Proof.
   intros. induction H.
   - apply t_zero.
-  - apply t_succ. assumption.
+  - apply t_succ; auto.
 Qed.
 
 Theorem Preservation : forall t : term, forall T : type , t ===> T -> 
@@ -321,17 +311,7 @@ Proof.
     + pose not_ex_all_not. pose (n term (fun x => (t -*-> x) /\ nv x) H).
       inversion IHt. pose (n0 x). simpl in n1. apply not_and_or in n1.
       destruct n1.
-      * 
-Theorem termination : forall t : term, ~ Diverge(t).
-Proof.
-  intros. unfold not. intros. in
-
-
-
-
-
-
-
+      Admitted.
 
 
 
