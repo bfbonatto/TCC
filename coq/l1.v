@@ -91,16 +91,12 @@ Lemma t_update_shadow : forall (A : Type) (m : total_map A) x v1 v2,
     (x !-> v2 ; x !-> v1 ; m) = (x !-> v2 ; m).
 Proof.
   intros. apply functional_extensionality_dep.
-  intros. assert (x = x0 -> (x !-> v2; x !-> v1; m) x0 = (x !-> v2; m) x0).
-  - intros. rewrite H. unfold t_update. rewrite Nat.eqb_refl. auto.
-  - assert (x <> x0 -> (x !-> v2; m) x0 = m x0).
-    + intros. unfold t_update. rewrite eqb_false_iff. auto. auto.
-    + assert (x <> x0 -> (x !-> v2; x !-> v1; m) x0 = m x0).
-      * intros. unfold t_update. rewrite eqb_false_iff. auto. auto.
-      * pose (classic (x = x0)). destruct o.
-        apply H in H2. auto. pose (H0 H2). pose (H1 H2). rewrite e.
-        rewrite e0. auto.
+  intros. unfold t_update. pose (classic (x = x0)).
+  destruct o.
+  - subst. rewrite <- beq_nat_refl. auto.
+  - apply eqb_false_iff in H. rewrite H. auto.
 Qed.
+
 
 
 Theorem t_update_same : forall (A : Type) (m : total_map A) x,
@@ -121,32 +117,13 @@ Theorem t_update_permute : forall (A : Type) (m : total_map A)
     =
     (x2 !-> v2 ; x1 !-> v1 ; m).
 Proof.
-  intros. assert ((x1 !-> v1; x2 !-> v2; m) x1 = v1).
-  unfold t_update. rewrite Nat.eqb_refl. auto.
-  assert ((x1 !-> v1; x2 !-> v2; m) x2 = v2).
-  unfold t_update. rewrite Nat.eqb_refl. rewrite eqb_false_iff.
-  auto. auto. assert ((x2 !-> v2; x1 !-> v1; m) x2 = v2).
-  unfold t_update. rewrite Nat.eqb_refl. auto.
-  assert ((x2 !-> v2; x1 !-> v1; m) x1 = v1). unfold t_update.
-  rewrite eqb_false_iff. rewrite Nat.eqb_refl. auto. auto.
-  assert (forall x:nat, x <> x1 -> x <> x2 -> (x1 !-> v1; x2 !-> v2; m) x =
-(x2 !-> v2; x1 !-> v1; m) x).
-  - intros. unfold t_update. rewrite eqb_false_iff. rewrite eqb_false_iff. auto.
-    auto. auto.
-  - apply functional_extensionality_dep. intros. assert (x = x1 -> (x1 !-> v1; x2 !-> v2; m) x =
-(x2 !-> v2; x1 !-> v1; m) x). intros. rewrite H5. rewrite H0. rewrite H3. auto.
-    assert (x = x2 -> (x1 !-> v1; x2 !-> v2; m) x =
-(x2 !-> v2; x1 !-> v1; m) x). intros. rewrite H6. rewrite H1. rewrite H2. auto.
-    pose (classic (x = x1)). destruct o.
-    + apply H5 in H7. auto.
-    + pose (classic (x = x2)). destruct o.
-      * apply H6 in H8. auto.
-      * pose (H4 x H7 H8). auto.
+  intros. apply functional_extensionality_dep.
+  intros. destruct (classic (x = x1)); destruct (classic (x = x2)); subst.
+  - destruct H. auto.
+  - repeat (rewrite t_update_eq). rewrite t_update_neq. rewrite t_update_eq; auto. auto.
+  - rewrite t_update_neq; auto. rewrite t_update_eq. rewrite t_update_eq. auto.
+  - repeat (rewrite t_update_neq; auto).
 Qed.
-
-
-
-
 
 
 Definition partial_map (A : Type) := total_map (option A).
@@ -271,12 +248,6 @@ end
 
 where "'[' x ':=' s ']' t" := (f_subst x s t).
 
-(*
-Inductive i_subst (s : term) (x : nat) : term -> term -> Prop :=
-  | s_num : forall (n : nat), i_subst s x (t_num n) (t_num n)
-  | s_bool : forall (b : bool), i_subst s x (t_bool b) (t_bool b)
-  | 
- TODO *)
 
 
 
@@ -402,6 +373,31 @@ Qed.
 Theorem progress: forall (t : term) (T : type),
   empty |: t ===> T -> value t \/ exists t':term, t ---> t'.
 Proof.
+Hint Constructors step.
+Hint Constructors check.
+Hint Constructors term.
+Hint Constructors value.
+Hint Constructors type.
+Hint Constructors op.
+
+  intros. remember (@empty type) as gamma. induction H; auto;
+  right; auto; try (pose (IHcheck1 Heqgamma)); try (pose (IHcheck2 Heqgamma));
+  try (pose (IHcheck3 Heqgamma)).
+  - destruct o. destruct o0.
+    + subst. pose (value_nat_is_num empty e1 H H1).
+      inversion e. subst. pose (value_nat_is_num empty e2 H0 H2).
+      inversion e0. subst. exists (t_num (f x x0)). auto.
+    + inversion H2. exists (t_op e1 (op_arith f) x). auto.
+    + inversion H1. exists (t_op x (op_arith f) e2). auto.
+  - destruct o. destruct o0.
+    + subst. pose (value_nat_is_num empty e1 H H1).
+      inversion e. subst. pose (value_nat_is_num empty e2 H0 H2).
+      inversion e0. subst. exists (t_bool (f x x0)). auto.
+    + inversion H2. exists (t_op e1 (op_comp f) x). auto.
+    + inversion H1. exists (t_op x (op_comp f) e2). auto.
+  - 
+
+
   intros. remember (@empty type) as gamma. induction H.
   - left. apply val_nat.
   - left. apply val_bool.
@@ -494,6 +490,7 @@ Lemma free_in_context : forall x t T Gamma,
   Gamma |: t ===> T ->
   exists T', Gamma x = Some T'.
 Proof.
+
   intros. generalize dependent Gamma.
   generalize dependent T.
   induction H; intros; try solve [inversion H0; eauto].
@@ -507,113 +504,23 @@ Proof.
     rewrite update_neq in H12; auto.
 Qed.
 
-Lemma context_invariance : forall Gamma Gamma' t T,
-  Gamma |: t ===> T ->
-  (forall x, appears_free_in x t -> Gamma x = Gamma' x) ->
-  Gamma' |: t ===> T.
+Lemma free_is_equal : forall x t e,
+  ~ appears_free_in x t ->
+  [x := e]t = t.
 Proof.
-  intros. generalize dependent Gamma'.
-  induction H; intros; auto.
-  - apply tp_num.
-  - apply tp_bool.
-  - apply tp_arith; auto. apply IHcheck1.
-    intros. assert (appears_free_in x (t_op e1 (op_arith f) e2)).
-    apply afi_op1. auto. apply H1 in H3. auto.
-    apply IHcheck2. intros. assert (appears_free_in x (t_op e1 (op_arith f) e2)).
-    apply afi_op2. auto. apply H1 in H3. auto.
-  - apply tp_comp; auto. apply IHcheck1.
-    intros. assert (appears_free_in x (t_op e1 (op_comp f) e2)).
-    apply afi_op1. auto. apply H1 in H3. auto.
-    apply IHcheck2. intros. assert (appears_free_in x (t_op e1 (op_comp f) e2)).
-    apply afi_op2. auto. apply H1 in H3. auto.
-  - apply tp_if.
-    apply IHcheck1. intros. apply H2. apply afi_if1. auto.
-    apply IHcheck2. intros. apply H2. apply afi_if2. auto.
-    apply IHcheck3. intros. apply H2. apply afi_if3. auto.
-  - apply tp_var. pose (H0 n). assert (appears_free_in n (t_var n)).
-    apply afi_var. apply e in H1. rewrite <- H. auto.
-  - apply tp_fun. apply IHcheck. intros. destruct (classic (x = x0)).
-    + subst. rewrite update_eq. rewrite update_eq. auto.
-    + rewrite update_neq; auto. rewrite update_neq; auto.
-      apply H0. apply afi_fun; auto.
-  - apply tp_app with T.
-    apply IHcheck1. intros. apply H1. apply afi_app1. auto.
-    apply IHcheck2. intros. apply H1. apply afi_app2. auto.
-  - apply tp_let. apply IHcheck1. intros. apply H1. apply afi_let1; auto.
-    apply IHcheck2. intros. destruct (classic (x = x0)).
-    + subst. rewrite update_eq. rewrite update_eq. auto.
-    + rewrite update_neq; auto. rewrite update_neq; auto.
-      apply H1. apply afi_let2; auto.
-  - apply tp_rec; auto.
-    + apply IHcheck1. intros. destruct (classic (x = x0)).
-      subst. rewrite update_eq. rewrite update_eq. auto.
-      destruct (classic (f = x0)). subst.
-      rewrite update_neq. rewrite update_eq.
-      rewrite update_neq. rewrite update_eq.
-      auto. auto. auto. rewrite update_neq; auto.
-      rewrite update_neq; auto. rewrite update_neq; auto.
-      rewrite update_neq; auto. apply H2.
-      apply afi_rec1; auto.
-    + apply IHcheck2; subst. intros. destruct (classic (f = x0)).
-      subst. rewrite update_eq. rewrite update_eq. auto.
-      rewrite update_neq; auto. rewrite update_neq; auto.
-      apply H2. apply afi_rec2; auto.
-Qed.
 
+Hint Constructors step.
+Hint Constructors check.
+Hint Constructors term.
+Hint Constructors value.
+Hint Constructors type.
+Hint Constructors op.
+Hint Constructors appears_free_in.
 
-
-Lemma empty_context : forall t T Gamma,
-  empty |: t ===> T ->
-  Gamma |: t ===> T.
-Proof.
-  intros. remember (@empty type) as g. induction H.
-  - apply tp_num.
-  - apply tp_bool.
-  - apply tp_arith; auto.
-  - apply tp_comp; auto.
-  - apply tp_if; auto.
-  - apply tp_var; auto. subst. inversion H.
-  - apply tp_fun. subst. subst.
-    pose (context_invariance (x |-> T) (x |-> T ; Gamma)
-    e T' H). apply c. intros. destruct (classic (x = x0)).
-    + subst. repeat rewrite update_eq. auto.
-    + repeat rewrite update_neq; auto.
-      pose (free_in_context x0 e T' (x|->T) H0 H).
-      inversion e0. rewrite update_neq in H2; auto.
-      inversion H2.
-  - pose (tp_app e1 e2 Gamma T T'). subst.
-    auto.
-  - apply tp_let. auto. subst.
-    pose (context_invariance (x|->T) (x|->T;Gamma) e2 T').
-    apply c; auto. clear c. intros. destruct (classic (x = x0)).
-    + subst. repeat rewrite update_eq; auto.
-    + repeat rewrite update_neq; auto.
-      pose (free_in_context x0 e2 T' (x|->T) H1 H0).
-      inversion e. rewrite update_neq in H3; auto. inversion H3.
-  - apply tp_rec; auto.
-    + subst. pose (context_invariance (x|->T1;f|->type_fun T1 T2)
-      (x|->T1;f|->type_fun T1 T2; Gamma) e1 T2 H0). apply c; auto.
-      clear c. intros. destruct (classic (x = x0)).
-      * subst. destruct (classic (f = x0)).
-        { subst. unfold not in H. assert (x0 = x0). auto.
-          apply H in H3. inversion H3. }
-        { repeat rewrite update_eq; auto. }
-      * destruct (classic (f = x0)).
-        { subst. rewrite update_neq; auto. rewrite update_eq; auto.
-          rewrite update_neq; auto. rewrite update_eq; auto. }
-        { repeat rewrite update_neq; auto.
-          pose (free_in_context x0 e1 T2 (x|->T1;f|->type_fun T1 T2)
-          H2 H0). inversion e. rewrite update_neq in H5; auto.
-          rewrite update_neq in H5; auto. inversion H5. }
-    + subst. clear IHcheck1. clear IHcheck2.
-      pose (context_invariance (f|->type_fun T1 T2)
-      (f|->type_fun T1 T2; Gamma) e2 T H1).
-      apply c. clear c. intros.
-      pose (free_in_context x0 e2 T (f|->type_fun T1 T2) H2 H1).
-      inversion e. destruct (classic (f = x0)).
-      * subst. repeat rewrite update_eq; auto.
-      * rewrite update_neq in H3. inversion H3. auto.
-Qed.
+  intros. induction t; auto.
+  - unfold not in H. unfold not in IHt1. unfold not in IHt2.
+    destruct IHt1. intro. auto. destruct IHt2; auto.
+    
 
 
 
@@ -623,6 +530,21 @@ Lemma substitution_lemma : forall Gamma x U t v T,
   empty |: v ===> U   ->
   Gamma |: [x:=v]t ===> T.
 Proof.
+
+Hint Constructors step.
+Hint Constructors check.
+Hint Constructors term.
+Hint Constructors value.
+Hint Constructors type.
+Hint Constructors op.
+
+
+  intros. generalize dependent Gamma. generalize dependent T.
+  induction H0.
+  - intros. destruct (classic (appears_free_in x t)).
+    + admit.
+    + 
+
   (*intros. generalize dependent Gamma. generalize dependent T.
   induction t.
   - intros. inversion H. subst. assert (([x:=v] t_num n) = t_num n).

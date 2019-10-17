@@ -266,6 +266,7 @@ Proof.
 Qed.
 
 Lemma allValues : forall v : term, value(v) -> nv v \/ v = true \/ v = false.
+Proof.
   intros. induction v.
   - left. apply zeroNum.
   - left. inversion H. subst. auto.
@@ -281,38 +282,27 @@ Proof.
   intros. inversion H. subst. auto.
 Qed.
 
-Theorem termination' : forall t : term, exists t' : term,
-  t -*-> t' -> value(t') \/ Stuck(t').
-Proof.
-  intros. induction t.
-  - exists zero. intros. left. apply numVal; apply zeroNum.
-  - inversion IHt. exists (succ x). intros. pose (l3 (succ t) (succ x) H0 t).
-    assert (succ t = succ t). auto. apply e in H1. inversion H1.
-    destruct H2. inversion H2. subst. apply H in H3. destruct H3.
-    + pose (classic (nv x0)). destruct o. left.
-      apply numVal. apply succNum. auto. right. unfold Stuck.
-      split.
-      * unfold NF. intro. inversion H5. inversion H6. subst.
-        apply finalValues with(t':= t') in H3. contradiction.
-      * intro. inversion H5. subst. inversion H6. subst. auto.
-    + right. unfold Stuck in *. split.
-      * destruct H3. unfold NF in *. intro. inversion H5.
-        inversion H6. subst. assert (exists t' : term, x0 ---> t').
-        exists t'. auto. auto.
-      * destruct H3. intro. inversion H5. subst. inversion H6.
-        subst. assert (value x0). apply numVal. auto. auto.
-  - exists true. intros. left. apply trueVal.
-  - exists false; intros; left; apply falseVal.
-  - pose (classic (exists x, ((t -*-> x) /\ (nv x)))).
-    destruct o.
-    + inversion H. destruct H0. inversion H1. subst. exists true.
-      intros. left. apply trueVal.
-      subst. exists false. intros. left. apply falseVal.
-    + pose not_ex_all_not. pose (n term (fun x => (t -*-> x) /\ nv x) H).
-      inversion IHt. pose (n0 x). simpl in n1. apply not_and_or in n1.
-      destruct n1.
-      Admitted.
 
+Lemma l2': forall t t', succ t -*-> succ t' -> t -*-> t'.
+Proof.
+  Hint Constructors multistep.
+  intros. induction t.
+  Admitted.
+
+
+
+Theorem unicidade: forall t T T',
+  t ===> T -> t ===> T' -> T = T'.
+Proof.
+  intros. induction H; subst; auto; inversion H0; auto.
+Qed.
+
+Lemma natValIsNV: forall t, value(t) -> t ===> typeNat -> nv t.
+Proof.
+  Hint Constructors nv.
+  Hint Constructors value.
+  intros. inversion H0; subst; auto; inversion H; auto.
+Qed.
 
 
 
