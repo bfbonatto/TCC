@@ -1,0 +1,93 @@
+--- a/parsing/printast.ml
++++ b/parsing/printast.ml
+@@ -760,3 +760,5 @@ let interface ppf x = list 0 signature_item ppf x;;
+ let implementation ppf x = list 0 structure_item ppf x;;
+ 
+ let top_phrase ppf x = toplevel_phrase 0 ppf x;;
++
++let constant f x = fmt_constant f x;;
+--- a/parsing/printast.mli
++++ b/parsing/printast.mli
+@@ -16,3 +16,5 @@ open Format;;
+ val interface : formatter -> signature_item list -> unit;;
+ val implementation : formatter -> structure_item list -> unit;;
+ val top_phrase : formatter -> toplevel_phrase -> unit;;
++
++val constant : formatter -> Asttypes.constant -> unit;;
+--- a/typing/printtyped.ml
++++ b/typing/printtyped.ml
+@@ -761,3 +761,7 @@ let interface ppf x = list 0 signature_item ppf x.sig_items;;
+ let implementation ppf x = list 0 structure_item ppf x.str_items;;
+ 
+ let implementation_with_coercion ppf (x, _) = implementation ppf x
++
++let pattern ppf x = pattern 0 ppf x
++
++let expression ppf x = expression 0 ppf x
+--- a/typing/printtyped.mli
++++ b/typing/printtyped.mli
+@@ -18,3 +18,6 @@ val implementation : formatter -> structure -> unit;;
+ 
+ val implementation_with_coercion :
+     formatter -> (structure * module_coercion) -> unit;;
++
++val pattern : formatter -> pattern -> unit;;
++val expression : formatter -> expression -> unit;;
+--- a/typing/typecore.ml
++++ b/typing/typecore.ml
+@@ -1537,6 +1537,7 @@ let type_format loc fmt =
+               conversion j ty_arg
+             | c -> conversion (j - 1) Predef.type_int
+           end
++        (* (* Disabled in RAML2: using non-portable feature Printf.CamlinternalPr *)
+         | '{' | '(' as c ->
+           let j = j + 1 in
+           if j >= len then incomplete_format fmt else
+@@ -1551,6 +1552,7 @@ let type_format loc fmt =
+           | '{' -> conversion (sj - 1) ty_sfmt
+           | _ -> incr meta; conversion (j - 1) ty_sfmt end
+         | ')' when !meta > 0 -> decr meta; scan_format (j + 1)
++        *)
+         | c -> bad_conversion fmt i c in
+       scan_flags i j in
+ 
+--- a/utils/config.mlp
++++ b/utils/config.mlp
+@@ -49,7 +49,7 @@ let mkexe = "%%MKEXE%%"
+ let mkmaindll = "%%MKMAINDLL%%"
+ 
+ let exec_magic_number = "Caml1999X008"
+-and cmi_magic_number = "Caml1999I015"
++and cmi_magic_number = "%%HOST_CMI_MAGIC_NUMBER%%"
+ and cmo_magic_number = "Caml1999O007"
+ and cma_magic_number = "Caml1999A008"
+ and cmx_magic_number = "Caml1999Y011"
+--- a/utils/errors.ml	2013-08-20 11:32:13.000000000 -0400
++++ b/utils/errors.ml	2014-04-22 17:48:44.000000000 -0400
+@@ -26,8 +26,10 @@
+       Lexer.report_error ppf err
+   | Syntaxerr.Error err ->
+       Syntaxerr.report_error ppf err
++  (*
+   | Pparse.Error err ->
+       Pparse.report_error ppf err
++  *)
+   | Env.Error err ->
+       Location.print_error_cur_file ppf;
+       Env.report_error ppf err
+@@ -52,6 +54,7 @@
+       Includemod.report_error ppf err
+   | Typemod.Error(loc, env, err) ->
+       Location.print_error ppf loc; Typemod.report_error env ppf err
++  (*
+   | Translcore.Error(loc, err) ->
+       Location.print_error ppf loc; Translcore.report_error ppf err
+   | Translclass.Error(loc, err) ->
+@@ -76,6 +79,7 @@
+   | Warnings.Errors (n) ->
+       Location.print_error_cur_file ppf;
+       fprintf ppf "Some fatal warnings were triggered (%d occurrences)" n
++  *)
+   | x -> fprintf ppf "@]"; raise x in
+ 
+   fprintf ppf "@[%a@]@." report exn

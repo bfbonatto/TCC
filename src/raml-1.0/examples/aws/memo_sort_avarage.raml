@@ -1,0 +1,169 @@
+
+(* * * * * * * * * * *
+ * Resource Aware ML *
+ * * * * * * * * * * *
+ *
+ * * *  Use Case  * *
+ *
+ * File:
+ *   examples/aws/sort_average.raml
+ *
+ * Author:
+ *   Jan Hoffmann, Ronghui Gu (2015)
+ * 
+ * Description:
+ *   
+ *)
+
+exception Not_found of int * int
+
+type 'a option = None | Some of 'a
+
+type 'a memolist = Not_requested of int * ('a memolist)
+		   | Grade of int * 'a * ('a memolist)
+		   | Nil
+
+let db_query student_id course_id =
+  Raml.tick(1.0);  Some 1.0
+
+let rec append l1 l2 =
+  match l1 with
+    | [] -> l2
+    | x::xs -> x::(append xs l2)
+
+let rec partition gt acc l =
+  match l with
+    | [] -> acc
+    | x::xs ->
+      let (cs,bs,acc) = acc in
+      let (is_greater,acc') = gt x acc in
+      if is_greater then
+  	partition gt (cs,x::bs,acc') xs
+      else
+  	partition gt (x::cs,bs,acc') xs
+
+	
+let rec quicksort gt acc l = match l with
+  | [] -> ([],acc)
+  | x::xs ->
+    let ys, zs, acc1 = partition (gt x) ([],[],acc) xs in
+    let (l1,acc2) = quicksort gt acc1 ys in
+    let (l2,acc3) = quicksort gt acc2 zs in
+    (append  l1 (x::l2), acc3)
+
+
+let rec foldl f acc l =
+  match l with
+    | [] -> acc
+    | x::xs -> foldl f (f acc x) xs
+
+let average_grade student_id course_ids =
+  let f acc cid =
+    let (length,sum) = acc in
+    let grade = match db_query student_id cid with
+      | Some q -> q
+      | None -> raise (Not_found (student_id,cid))
+    in
+    (length +. 1.0, sum +. grade)
+  in
+  let (length,sum) = foldl f (0.0,0.0) course_ids in
+  sum /. length
+
+let greater_eq sid1 sid2 course_ids =
+  (average_grade sid1 course_ids >= average_grade sid2 course_ids, course_ids)
+
+let sort_students student_ids course_ids =
+  let (sorted_sids, acc) = quicksort greater_eq course_ids student_ids in
+  sorted_sids
+
+
+let rec map f l =
+  match l with
+    | [] -> []
+    | x::xs -> (f x) :: (map f xs)
+
+      
+      
+let make_table student_ids course_ids =
+  let rec mk_cid_list cids =
+    match cids with
+      | [] -> Nil
+      | x::xs ->
+	Not_requested (x, mk_cid_list xs)
+  in
+  let cids = mk_cid_list course_ids in
+  let rec mk_table sids cids =
+    match sids with
+      | [] -> []
+      | x::xs ->
+	(x,cids)::(mk_table xs cids)
+  in
+  mk_table student_ids cids
+
+
+let rec find_update sid cid table =
+
+  let rec fn_update sid cid data =
+    match data with
+      | Nil -> raise (Not_found (sid,cid))
+      | Not_requested (x_cid,x_data) ->
+	if x_cid = cid then
+	  let grade =
+	    match db_query sid cid with
+	      | Some q -> q
+	      | None -> raise (Not_found (sid,cid))
+	  in
+	  (grade,Grade(cid,grade,x_data))
+	else
+	  let (grade, x_data') = fn_update sid cid x_data in
+	  (grade, Not_requested(x_cid,x_data'))
+      | Grade (x_cid,x_grade,x_data) ->
+	if x_cid = cid then
+	  (x_grade,Grade(cid,x_grade,x_data))
+	else
+	  let (grade, x_data') = fn_update sid cid x_data in
+	  (grade, Grade(x_cid,x_grade,x_data'))
+  in
+
+  match table with
+    | [] -> raise (Not_found (sid,cid))
+    | y::ys ->
+      let (y_id,y_data) = y in
+      if (sid:int) = y_id then
+	let (grade,y_data') = fn_update sid cid y_data in
+	(grade,(y_id,y_data')::ys)
+      else
+	let (grade,ys') = find_update sid cid ys in
+	(grade, (y_id,y_data)::ys')
+
+
+let average_grade' student_id course_ids table =
+  let rec f acc course_ids =
+    match course_ids with
+      | [] -> acc
+      | cid::cids ->
+	let (length,sum,table) = acc in
+	let (grade,table') = find_update student_id cid table in
+	f (length +. 1.0, sum +. grade, table') cids
+  in
+  let (length,sum,table') = f (0.0,0.0,table) course_ids in
+  (sum /. length,table')
+
+
+let greater_eq' course_ids sid1 sid2 table =
+  let (grade1, table1) = average_grade' sid1 course_ids table in
+  let (grade2, table2) = average_grade' sid2 course_ids table1 in
+  (grade1 >= grade2, table2)
+
+
+let sort_students_efficient student_ids course_ids =
+  let (sorted_sids,acc) =
+    quicksort (greater_eq' course_ids) (make_table student_ids course_ids) student_ids
+  in
+  sorted_sids
+    
+let _ = (* map (fun x -> let (b) = x in map (fun x -> Raml.tick(1.0)) b) *)
+        (* (make_table_test [1;2;3] [9;8;7;6;5]) *) ()
+
+
+
