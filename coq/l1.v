@@ -6,6 +6,7 @@ From Coq Require Import omega.Omega.
 Require Import Nat.
 
 
+
 Lemma exists_not_forall : forall (X : Type) (P : X -> Prop),
   (exists x, ~ P x) -> ~ (forall x, P x).
 Proof.
@@ -272,7 +273,7 @@ Inductive step : term -> term -> Prop :=
   | e_if       : forall (e1 e1' e2 e3 : term),
       e1 ---> e1' -> (t_if e1 e2 e3) ---> (t_if e1' e2 e3)
 
-  | e_beta     : forall (x : nat) (T : type) (e v : term), t_app (t_fun x T e) v ---> [x:=v]e
+  | e_beta     : forall (x : nat) (T : type) (e v : term), value v -> t_app (t_fun x T e) v ---> [x:=v]e
   | e_app2     : forall (e1 e2 e2' : term),
       e2 ---> e2' -> value e1 -> (t_app e1 e2) ---> (t_app e1 e2')
 
@@ -395,55 +396,20 @@ Hint Constructors op.
       inversion e0. subst. exists (t_bool (f x x0)). auto.
     + inversion H2. exists (t_op e1 (op_comp f) x). auto.
     + inversion H1. exists (t_op x (op_comp f) e2). auto.
-  - 
-
-
-  intros. remember (@empty type) as gamma. induction H.
-  - left. apply val_nat.
-  - left. apply val_bool.
-  - right. pose (IHcheck1 Heqgamma). pose (IHcheck2 Heqgamma).
-    destruct o; destruct o0; subst.
-    + pose (value_nat_is_num empty e1 H H1). inversion e. subst.
-      pose (value_nat_is_num empty e2 H0 H2). inversion e0. subst.
-      exists (t_num (f x x0)). apply e_op_arith.
-    + inversion H2. exists (t_op e1 (op_arith f) x).
-      apply e_op2; auto.
-    + inversion H1. exists (t_op x (op_arith f) e2). apply e_op1.
-      auto.
-    + inversion H1. exists (t_op x (op_arith f) e2). apply e_op1.
-      auto.
-  - right. pose (IHcheck1 Heqgamma). pose (IHcheck2 Heqgamma). destruct o;
-    destruct o0; subst.
-    + pose (value_nat_is_num empty e1 H H1). inversion e. subst.
-      pose (value_nat_is_num empty e2 H0 H2). inversion e0. subst.
-      exists (t_bool (f x x0)). apply e_op_comp.
-    + inversion H2. exists (t_op e1 (op_comp f) x). apply e_op2; auto.
-    + inversion H1. exists (t_op x (op_comp f) e2). apply e_op1; auto.
-    + inversion H1. exists (t_op x (op_comp f) e2). apply e_op1; auto.
-  - right. pose (IHcheck1 Heqgamma). pose (IHcheck2 Heqgamma).
-    pose (IHcheck3 Heqgamma); subst.
-    destruct o. pose (value_bool_is_bool empty t1 H H2). destruct o; subst.
-    exists t2. apply e_if_t. exists t3. apply e_if_f.
-    inversion H2. exists (t_if x t2 t3). apply e_if.
-    auto.
-  - subst. inversion H.
-  - left. apply val_fun.
-  - right. pose (IHcheck1 Heqgamma). pose (IHcheck2 Heqgamma).
-    destruct o.
-    + subst. destruct o0; subst.
-      * pose (value_fun_is_fun empty e1 T T' H H1). inversion e.
-        inversion H3. subst. exists ([x:=e2]x0). apply e_beta.
-      * inversion H2. exists (t_app e1 x). apply e_app2. auto.
-        auto.
-    + inversion H1. exists (t_app x e2). apply e_app1. auto.
-  - pose (IHcheck1 Heqgamma). destruct o; subst.
-    + assert (t_let x T e1 e2 ---> [x:=e1]e2). apply e_let1. auto.
-      right. exists ([x:=e1]e2). auto.
-    + inversion H1. right. exists (t_let x T x0 e2). apply e_let2.
-      auto.
-  - subst. right. exists ([f:=(t_fun x T1 (t_rec f T1 T2 x e1 e1))]e2).
-    apply e_rec.
+  - destruct o. apply value_bool_is_bool in H. destruct H; subst.
+    exists t2; auto. exists t3; auto. auto. inversion H2.
+    exists (t_if x t2 t3). auto.
+  - inversion Heqgamma. subst. inversion H.
+  - destruct o. apply value_fun_is_fun in H. inversion H. inversion H2.
+    subst. destruct o0. exists ([x:=e2]x0). auto.
+    inversion H3. exists (t_app (t_fun x T x0) x1). auto.
+    auto. inversion H1. exists (t_app x e2). auto.
+  - destruct o. exists ([x:=e1] e2). auto.
+    inversion H1. exists (t_let x T x0 e2). auto.
+  - clear IHcheck1. clear IHcheck2.
+    exists ([f:=(t_fun x T1 (t_rec f T1 T2 x e1 e1))]e2). auto.
 Qed.
+
 
 Inductive appears_free_in : nat -> term -> Prop :=
   | afi_var  : forall x, appears_free_in x (t_var x)
@@ -490,7 +456,6 @@ Lemma free_in_context : forall x t T Gamma,
   Gamma |: t ===> T ->
   exists T', Gamma x = Some T'.
 Proof.
-
   intros. generalize dependent Gamma.
   generalize dependent T.
   induction H; intros; try solve [inversion H0; eauto].
@@ -508,7 +473,6 @@ Lemma free_is_equal : forall x t e,
   ~ appears_free_in x t ->
   [x := e]t = t.
 Proof.
-
 Hint Constructors step.
 Hint Constructors check.
 Hint Constructors term.
@@ -518,9 +482,8 @@ Hint Constructors op.
 Hint Constructors appears_free_in.
 
   intros. induction t; auto.
-  - unfold not in H. unfold not in IHt1. unfold not in IHt2.
-    destruct IHt1. intro. auto. destruct IHt2; auto.
-    
+  Admitted.
+
 
 
 
@@ -543,117 +506,7 @@ Hint Constructors op.
   induction H0.
   - intros. destruct (classic (appears_free_in x t)).
     + admit.
-    + 
-
-  (*intros. generalize dependent Gamma. generalize dependent T.
-  induction t.
-  - intros. inversion H. subst. assert (([x:=v] t_num n) = t_num n).
-    auto. assert (Gamma |: t_num n ===> type_nat). apply tp_num.
-    rewrite H1. auto.
-  - intros. inversion H. subst. assert (([x:=v] t_bool b) = t_bool b).
-    auto. assert (Gamma |: t_bool b ===> type_bool). apply tp_bool.
-    auto.
-  - intros. inversion H. subst. pose (IHt1 type_nat Gamma H6).
-    pose (IHt2 type_nat Gamma H7).
-    assert (([x:=v] t_op t1 (op_arith f) t2) = (t_op ([x:=v]t1) (op_arith f) ([x:=v]t2))).
-    auto. rewrite H1. apply tp_arith; auto. subst.
-    assert (([x:=v] t_op t1 (op_comp f) t2) = (t_op ([x:=v]t1) (op_comp f) ([x:=v]t2))).
-    auto. rewrite H1. apply tp_comp; auto.
-  - intros. inversion H. subst.
-    pose (IHt1 type_bool Gamma H5).
-    pose (IHt2 T Gamma H7).
-    pose (IHt3 T Gamma H8).
-    assert (([x:=v] t_if t1 t2 t3) = (t_if ([x:=v]t1) ([x:=v]t2) ([x:=v]t3))).
-    auto. rewrite H1. apply tp_if; auto.
-  - intros. destruct (classic (x = n)).
-    + subst. destruct (classic (U = T)).
-      * subst. assert (([n:=v] t_var n) = v).
-        unfold f_subst. rewrite Nat.eqb_refl. auto.
-        rewrite H1. apply empty_context. auto.
-      * inversion H. subst. inversion H4. pose (update_eq type Gamma n U).
-        rewrite e in H3. inversion H3. contradiction.
-    + assert (([x:=v] t_var n) = t_var n). unfold f_subst.
-      pose (eqb_false_iff x n H1). rewrite e. auto.
-      rewrite H2. apply tp_var. inversion H. subst.
-      unfold update in H5. unfold t_update in H5.
-      pose (eqb_false_iff x n H1). rewrite e in H5. auto.
-  - intros. inversion H. subst.
-    assert (([x:=v] t_app t1 t2) = t_app ([x:=v]t1) ([x:=v]t2)).
-    auto. rewrite H1. apply tp_app with T0.
-    pose (IHt1 (type_fun T0 T) Gamma H4). auto.
-    pose (IHt2 T0 Gamma H6). auto.
-  - intros. destruct (classic (x = n)).
-    + subst. destruct (classic (U = T)).
-      * subst. unfold f_subst. rewrite Nat.eqb_refl.
-        inversion H. subst. apply tp_fun.
-        pose (update_shadow type Gamma n (type_fun t T') t ).
-        rewrite e in H6. auto.
-      * unfold f_subst. rewrite Nat.eqb_refl. inversion H.
-        subst. apply tp_fun.
-        pose (update_shadow type Gamma n U t). rewrite e in H7.
-        auto.
-    + assert (([x:=v] t_fun n t t0) = (t_fun n t ([x:=v]t0))).
-      pose (eqb_false_iff x n H1). unfold f_subst. rewrite e.
-      auto. rewrite H2. inversion H. subst. apply tp_fun.
-      pose (update_permute type Gamma n x t U H1). rewrite e in H8.
-      pose (IHt T' (n |-> t; Gamma) H8). auto.
-  - intros. destruct (classic (x = n)).
-    + subst. inversion H. subst.
-      assert (([n:=v] t_let n t1 t2 t3) = (t_let n t1 ([n:=v]t2) t3)).
-      unfold f_subst. rewrite Nat.eqb_refl. auto.
-      rewrite H1. apply tp_let.
-      pose (IHt1 t1 Gamma H7). auto.
-      pose (update_shadow type Gamma n U t1). rewrite e in H8.
-      auto.
-    + inversion H. subst.
-      assert (([x:=v] t_let n t1 t2 t3) = (t_let n t1 ([x:=v]t2) ([x:=v]t3))).
-      unfold f_subst. pose (eqb_false_iff x n H1). rewrite e. auto.
-      rewrite H2. apply tp_let. pose (IHt1 t1 Gamma H8). auto.
-      pose (update_permute type Gamma n x t1 U H1).
-      rewrite e in H9. pose (IHt2 T (n |-> t1 ; Gamma) H9).
-      auto.
-  - intros. destruct (classic (x = n)); destruct (classic (x = n0)).
-    { subst. inversion H; subst. contradiction. }
-    { subst. pose (eqb_false_iff n n0 H2). assert
-      (([n := v] t_rec n t1 t2 n0 t3 t4) =
-       (t_rec n t1 t2 n0 t3 ([n := v] t4))).
-      unfold f_subst. rewrite e. rewrite Nat.eqb_refl. auto.
-      rewrite H1. clear e. clear H1. apply tp_rec; auto.
-      inversion H; subst. rewrite update_shadow in H11; auto.
-      apply IHt2. inversion H; subst. }
-    { subst. }
-    { auto. }*)
-
-  intros. generalize dependent Gamma. generalize dependent T.
-  induction t.
-  - intros. assert (([x:=v] t_num n) = t_num n).
-    auto. rewrite H1. inversion H. subst. apply tp_num.
-  - intros. inversion H. subst. apply tp_bool.
-  - intros. destruct o.
-    + assert (([x:=v] t_op t1 (op_arith n) t2) = (t_op ([x:=v] t1) (op_arith n) ([x:=v] t2))).
-      auto. rewrite H1. inversion H. subst. apply tp_arith; auto.
-    + assert (([x:=v] t_op t1 (op_comp b) t2) = (t_op ([x:=v] t1) (op_comp b) ([x:=v] t2))).
-      auto. rewrite H1. inversion H. subst. apply tp_comp; auto.
-  - intros. inversion H; subst. apply tp_if; auto.
-  - intros. destruct (classic (x = n)).
-    + subst. destruct (classic (U = T)).
-      * subst. assert (([n:=v] t_var n) = v).
-        unfold f_subst. rewrite Nat.eqb_refl. auto.
-        rewrite H1. apply empty_context. auto.
-      * inversion H. subst. inversion H4. pose (update_eq type Gamma n U).
-        rewrite e in H3. inversion H3. contradiction.
-    + assert (([x:=v] t_var n) = t_var n). unfold f_subst.
-      pose (eqb_false_iff x n H1). rewrite e. auto.
-      rewrite H2. apply tp_var. inversion H. subst.
-      unfold update in H5. unfold t_update in H5.
-      pose (eqb_false_iff x n H1). rewrite e in H5. auto.
-  - intros. inversion H; subst. apply IHt1 in H4. apply IHt2 in H6.
-    assert (([x := v] t_app t1 t2) = (t_app ([x:=v] t1) ([x:=v] t2))).
-    auto. rewrite H1. apply tp_app with (T:=T0). auto. auto.
-  - intros. inversion H; subst. 
-
-
-Admitted.
+    Admitted.
 
 
 
@@ -666,45 +519,100 @@ Proof.
   try solve [inversion He; subst; auto].
   - pose (IHHt1 eq_refl). pose (IHHt2 eq_refl).
     inversion He; subst.
-    + apply tp_arith. pose (c e1' H3). auto.
-      auto.
-    + apply tp_arith. auto. pose (c0 e2' H3). auto.
-    + apply tp_num.
-  - pose (IHHt1 eq_refl). pose (IHHt2 eq_refl).
-    inversion He; subst.
-    + apply tp_comp. pose (c e1' H3); auto. auto.
-    + apply tp_comp. pose (c0 e2' H3). auto. auto.
-    + apply tp_bool.
-  - pose (IHHt1 eq_refl). pose (IHHt3 eq_refl). pose (IHHt2 eq_refl).
-    inversion He; subst.
-    + auto.
-    + auto.
-    + apply tp_if. pose (c e1' H3). auto. auto. auto.
-  - inversion He; subst.
-    + pose (substitution_lemma empty x T e e2 T').
-      inversion Ht1. subst. pose (c H1 Ht2). auto.
-    + pose (IHHt2 eq_refl). pose (c e2' H1). apply tp_app with T. auto.
-      auto.
-    + pose (IHHt1 eq_refl). pose (c e1' H2). apply tp_app with T. auto.
-      auto.
-  - inversion He; subst.
-    + pose (substitution_lemma empty x T e2 e1 T').
-      pose (c Ht2 Ht1). auto.
-    + apply tp_let. pose (IHHt1 eq_refl). pose (c e1' H4). auto.
-      auto.
-  - clear IHHt1. clear IHHt2. inversion He; subst.
-    remember (type_fun T1 T2) as tpf.
-    remember (t_fun x T1 (t_rec f T1 T2 x e1 e1)) as frec.
-    pose (substitution_lemma empty f tpf e2 frec T).
-    apply c in Ht2. auto. clear c. subst. apply tp_fun.
-    apply tp_rec.
-    + pose (update_permute type empty f x (type_fun T1 T2) T1).
-      auto.
-    + rewrite update_permute; auto. rewrite update_shadow; auto.
-      rewrite update_permute; auto.
-    + rewrite update_permute; auto.
+    Admitted.
 
-Qed.
+
+Definition ident := nat.
+Definition int := nat.
+
+
+Inductive StorableValue : Set :=
+  | st_int : int -> StorableValue
+  | st_bool : bool -> StorableValue
+  | st_clos : Environment -> ident -> Code -> StorableValue
+  | st_rec_clos : Environment -> ident -> ident -> Code -> StorableValue
+  with Environment : Set :=
+  | env : list (ident * StorableValue) -> Environment
+  with Code : Set :=
+  | code : list Instruction -> Code
+  with Instruction : Set :=
+  | INT : int -> Instruction
+  | BOOL : bool -> Instruction
+  | POP : Instruction
+  | COPY : Instruction
+  | ADD : Instruction
+  | EQ : Instruction
+  | GT : Instruction
+  | AND : Instruction
+  | NOT : Instruction
+  | JUMP : nat -> Instruction
+  | JMPIFTRUE : nat -> Instruction
+  | VAR : ident -> Instruction
+  | FUN : ident -> Code -> Instruction
+  | RFUN : ident -> ident -> Code -> Instruction
+  | APPLY : Instruction.
+
+Definition Stack := list StorableValue.
+Definition Dump := list (Code * Stack * Environment).
+Definition State : Set := (Code * Stack * Environment * Dump).
+
+Scheme sv_mut := Induction for StorableValue Sort Prop
+with env_mut := Induction for Environment Sort Prop
+with code_mut := Induction for Code Sort Prop
+with inst_mut := Induction for Instruction Sort Prop.
+
+
+Reserved Notation "A |> B" (at level 90, no associativity).
+Inductive SSM_OP : State -> State -> Prop :=
+  | push_int : forall (z : int), forall (c : list Instruction),
+           forall (s : Stack), forall (e : Environment),
+           forall (d : Dump),
+    (code (cons (INT z) c), s, e, d) |> (code c, cons (st_int z) s, e, d)
+  | push_bool : forall (b : bool), forall (c : list Instruction),
+           forall (s : Stack), forall (e : Environment),
+           forall (d : Dump),
+    (code (cons (BOOL b) c), s, e, d) |> (code c, cons (st_bool b) s, e, d)
+  | pop_value : forall (c : list Instruction),
+                forall (sv : StorableValue), forall (s : Stack),
+                forall (e : Environment), forall (d : Dump),
+    (code (cons POP c), cons sv s, e, d) |> (code c, s, e, d)
+  | copy_value : forall (c : list Instruction),
+                forall (sv : StorableValue), forall (s : Stack),
+                forall (e : Environment), forall (d : Dump),
+    (code (cons COPY c), cons sv s, e, d) |> (code c, cons sv (cons sv s), e, d)
+  | 
+
+
+where "A |> B" := (SSM_OP A B).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
