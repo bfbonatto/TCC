@@ -2,6 +2,9 @@
 From Coq Require Import Arith.
 From Coq Require Import Logic.FunctionalExtensionality.
 Require Import Coq.Logic.Classical_Prop.
+Require Import Classical_Prop Classical_Pred_Type.
+Require Import Logic.Classical_Prop.
+Require Import Classical.
 From Coq Require Import omega.Omega.
 Require Import Nat.
 
@@ -482,7 +485,45 @@ Hint Constructors op.
 Hint Constructors appears_free_in.
 
   intros. induction t; auto.
-  Admitted.
+  - assert (~ appears_free_in x t1).
+    intro. inversion H0; auto. assert (~ appears_free_in x t2).
+    intro. inversion H1; auto. apply IHt1 in H0. apply IHt2 in H1.
+    simpl. rewrite H0. rewrite H1. auto.
+  - assert (~ appears_free_in x t1). intro.
+    inversion H0; auto. assert (~ appears_free_in x t2). intro.
+    inversion H1; auto. assert (~ appears_free_in x t3). intro.
+    inversion H2; auto. apply IHt1 in H0. apply IHt2 in H1.
+    apply IHt3 in H2. simpl. rewrite H0. rewrite H1. rewrite H2.
+    auto.
+  - destruct (classic (x = n)).
+    + subst. unfold not in H.
+      assert (appears_free_in n (t_var n)). auto. apply H in H0.
+      inversion H0.
+    + simpl. Search beq_nat. pose (eqb_false_iff x n H0).
+      rewrite e0. auto.
+  - assert (~ appears_free_in x t1). auto. assert (~ appears_free_in x t2).
+    auto. apply IHt1 in H0. apply IHt2 in H1. simpl. rewrite H0.
+    rewrite H1. auto.
+  - destruct (classic (x = n)).
+    + subst. simpl. rewrite <- beq_nat_refl. auto.
+    + assert (~ appears_free_in x t0). auto. apply IHt in H1.
+      simpl. pose (eqb_false_iff x n H0). rewrite e0.
+      rewrite H1. auto.
+  - destruct (classic (x = n)).
+    + subst. simpl. rewrite <- beq_nat_refl.
+      assert (~ appears_free_in n t2). auto. apply IHt1 in H0.
+      rewrite H0. auto.
+    + simpl. pose (eqb_false_iff x n H0). rewrite e0.
+      assert (~ appears_free_in x t2). auto. assert (~ appears_free_in x t3).
+      auto. apply IHt1 in H1. apply IHt2 in H2. rewrite H1. rewrite H2.
+       auto.
+  - destruct (classic (x = n)).
+    + subst. destruct (classic (n = n0)).
+      * subst. simpl. rewrite <- beq_nat_refl. auto.
+      * simpl. rewrite <- beq_nat_refl. pose (eqb_false_iff n n0 H0).
+        rewrite e0. clear e0. assert (~ appears_free_in n t4).
+        Admitted.
+
 
 
 
@@ -522,17 +563,28 @@ Proof.
     Admitted.
 
 
+Notation "A :: B" := (cons A B).
+
 Definition ident := nat.
 Definition int := nat.
 
+Definition lookup_list (A : Type) := list (ident * A).
 
-Inductive StorableValue : Set :=
+Fixpoint lookup (A : Type) (x: ident) (l : lookup_list A) : option A :=
+  match l with
+  | nil => None
+  | ((y, v) :: ys) => if (beq_nat x y) then Some v
+    else lookup A x ys
+  end.
+
+
+Inductive StorableValue : Type :=
   | st_int : int -> StorableValue
   | st_bool : bool -> StorableValue
   | st_clos : Environment -> ident -> Code -> StorableValue
   | st_rec_clos : Environment -> ident -> ident -> Code -> StorableValue
-  with Environment : Set :=
-  | env : list (ident * StorableValue) -> Environment
+  with Environment : Type :=
+  | env : (lookup_list StorableValue) -> Environment
   with Code : Set :=
   | code : list Instruction -> Code
   with Instruction : Set :=
@@ -546,15 +598,22 @@ Inductive StorableValue : Set :=
   | AND : Instruction
   | NOT : Instruction
   | JUMP : nat -> Instruction
-  | JMPIFTRUE : nat -> Instruction
+  | JUMPIFTRUE : nat -> Instruction
   | VAR : ident -> Instruction
   | FUN : ident -> Code -> Instruction
   | RFUN : ident -> ident -> Code -> Instruction
   | APPLY : Instruction.
 
+Fixpoint code_length (c : Code) : nat :=
+  match c with
+  | code c' => length c'
+  end.
+
 Definition Stack := list StorableValue.
 Definition Dump := list (Code * Stack * Environment).
-Definition State : Set := (Code * Stack * Environment * Dump).
+Definition State : Type := (Code * Stack * Environment * Dump).
+
+
 
 Scheme sv_mut := Induction for StorableValue Sort Prop
 with env_mut := Induction for Environment Sort Prop
@@ -563,7 +622,7 @@ with inst_mut := Induction for Instruction Sort Prop.
 
 
 Reserved Notation "A |> B" (at level 90, no associativity).
-Inductive SSM_OP : State -> State -> Prop :=
+Inductive SSM_OP : State -> State -> Type :=
   | push_int : forall (z : int), forall (c : list Instruction),
            forall (s : Stack), forall (e : Environment),
            forall (d : Dump),
@@ -580,17 +639,118 @@ Inductive SSM_OP : State -> State -> Prop :=
                 forall (sv : StorableValue), forall (s : Stack),
                 forall (e : Environment), forall (d : Dump),
     (code (cons COPY c), cons sv s, e, d) |> (code c, cons sv (cons sv s), e, d)
-  | 
+  | add_value : forall (c : list Instruction),
+                forall (z1 z2 : int), forall (s : Stack),
+                forall (e: Environment), forall (d: Dump),
+     (code (cons ADD c), cons (st_int z1) (cons (st_int z2) s), e, d)
+     |> (code c, cons (st_int (z1 + z2)) s, e, d)
+  
+  | eq_value :  forall (c : list Instruction),
+                forall (z1 z2 : int), forall (s : Stack),
+                forall (e: Environment), forall (d: Dump),
+                (code (EQ :: c), st_int z1 :: st_int z2 :: s, e, d)
+                |> (code c, st_bool (beq_nat z1 z2) :: s, e, d)
+
+  | gt_value: forall (c: list Instruction),
+              forall (z1 z2 : int), forall (s: Stack),
+              forall (e: Environment), forall (d: Dump),
+              (code (GT :: c), st_int z1 :: st_int z2 :: s, e, d)
+              |> (code c, st_bool (negb (z1 <? z2)) :: s, e, d)
+
+  | and_value : forall (c : list Instruction),
+              forall (b1 b2 : bool), forall (s: Stack),
+              forall (e: Environment), forall (d: Dump),
+              (code (AND :: c), st_bool b1 :: st_bool b2 :: s, e, d)
+              |> (code c, st_bool (andb b1 b2) :: s, e, d)
+  | not_value : forall (c : list Instruction),
+              forall (b : bool), forall (s: Stack),
+              forall (e: Environment), forall (d: Dump),
+              (code (NOT :: c), st_bool b :: s, e, d)
+              |> (code c, st_bool (negb b) :: s, e, d)
+   | jump:    forall (c : list Instruction),
+              forall (s : Stack), forall (e: Environment),
+              forall (d : Dump), forall (n : nat),
+              (List.length c) >= n+1 ->
+              (code (JUMP n :: c), s, e, d) |>
+              (code (List.skipn n c), s, e, d)
+   | jump_true : forall (c : list Instruction),
+              forall (s : Stack), forall (e: Environment),
+              forall (d : Dump), forall (n : nat),
+              List.length c >= n+1 ->
+              (code (JUMPIFTRUE n :: c), st_bool true :: s, e, d)
+              |> (code (List.skipn n c), s, e, d)
+   | jump_false : forall (c : list Instruction),
+              forall (s : Stack), forall (e: Environment),
+              forall (d : Dump), forall (n : nat),
+              (code (JUMPIFTRUE n :: c), st_bool false :: s, e, d)
+              |> (code c, s, e, d)
+   | var_lookup : forall (c : list Instruction),
+              forall (s : Stack), forall (e: lookup_list StorableValue),
+              forall (d: Dump), forall (x : ident),
+              forall (sv : StorableValue), lookup StorableValue x e = Some sv -> 
+              (code (VAR x :: c), s, env e, d) |>
+              (code c, sv :: s, env e, d)
+   | closure : forall (c : list Instruction), forall (c' : Code),
+              forall (x : ident), forall (e: lookup_list StorableValue), forall (d: Dump),
+              forall (s : Stack), (code (FUN x c' :: c), s, (env e), d) |>
+              (code c, (st_clos (env e) x c') :: s, (env e), d)
+   | r_closure : forall (c : list Instruction), forall (c' : Code),
+              forall (x f : ident), forall (e: lookup_list StorableValue), forall (d: Dump),
+              forall (s : Stack), (code (RFUN f x c' :: c), s, env e, d) |>
+              (code c, (st_rec_clos (env e) f x c') :: s, (env e), d)
+   | apply_normal : forall (c: list Instruction) (e' : lookup_list StorableValue)
+              (x : ident) (c' : Code) (sv : StorableValue) (s : Stack)
+              (e : Environment) (d : Dump),
+              (code (APPLY :: c), (st_clos (env e') x c') :: sv :: s, e, d)
+              |>
+              (c', nil, env ((x, sv) :: e'), (code c, s, e) :: d)
+    | apply_rec : forall (c: list Instruction) (e' : lookup_list StorableValue)
+              (x f : ident) (c' : Code) (sv : StorableValue) (s : Stack)
+              (e : Environment) (d : Dump),
+              (code (APPLY :: c), (st_rec_clos (env e') f x c') :: sv :: s, e, d)
+              |>
+              (c', nil, env ((f, st_rec_clos (env e') f x c') :: (x,sv) :: e'), (code c, s, e) :: d)
+    | pop_closure : forall (sv : StorableValue) (s' : Stack) (e e' : Environment)
+                    (c' : Code) (d : Dump),
+                    (code nil, sv :: nil, e, (c', s', e') :: d) |>
+                    (c', sv :: s', e', d)
 
 
 where "A |> B" := (SSM_OP A B).
 
+Inductive state_value : State -> Prop :=
+  | s_value : forall (sv : StorableValue) (e  : Environment), 
+  state_value (code nil, sv :: nil, e, nil).
 
+Reserved Notation "A |>* B" (at level 90, no associativity).
+Inductive SSM_OP_Star : State -> State -> Prop :=
+  | sos_refl : forall (s : State), s |>* s
+  | sos_trans : forall (s1 s2 s3 : State), s1 |> s2 -> s2 |>* s3 -> s1 |>* s3
+where "A |>* B" := (SSM_OP_Star A B).
 
+Check length.
 
-
-
-
+Fixpoint cost (A B : State) (h : A |> B) : nat :=
+  match h with
+  | push_int _ _ _ _ _ => 1
+  | push_bool _ _ _ _ _ => 1
+  | pop_value _ _ _ _ _ => 1
+  | copy_value _ _ _ _ _ => 1
+  | add_value _ _ _ _ _ _ => 4
+  | eq_value _ _ _ _ _ _ => 4
+  | gt_value _ _ _ _ _ _ => 4
+  | and_value _ _ _ _ _ _ => 4
+  | not_value _ _ _ _ _ => 3
+  | jump _ _ _ _ n _ => n
+  | jump_true _ _ _ _ n _ => n+2
+  | jump_false _ _ _ _ _  => 2
+  | var_lookup _ _ e _ _ _ _ => 1 + (length e)
+  | closure _ _ _ e _ _ => 1 + (length e)
+  | r_closure _ _ _ _ e _ _ => 1 + (length e)
+  | apply_normal c e _ _ _ s _ _ => 3 + (length s) + (length e) + (length c)
+  | apply_rec c e _ _ _ _ s _ _ => 4 + (length s) + (length e) + (length c)
+  | pop_closure _ _ _ _ _ _ => 5
+  end.
 
 
 
