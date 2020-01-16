@@ -7,6 +7,7 @@ Require Import Logic.Classical_Prop.
 Require Import Classical.
 From Coq Require Import omega.Omega.
 Require Import Nat.
+Require Import List.
 
 
 
@@ -297,8 +298,6 @@ where "A ---> B" := (step A B).
 
 
 
-
-
 (* Type system *)
 
 
@@ -564,6 +563,10 @@ Proof.
 
 
 Notation "A :: B" := (cons A B).
+Notation "[]" := nil.
+Notation "[[ A ]]" := (A :: nil).
+
+
 
 Definition ident := nat.
 Definition int := nat.
@@ -607,6 +610,24 @@ Inductive StorableValue : Type :=
 Fixpoint code_length (c : Code) : nat :=
   match c with
   | code c' => length c'
+  end.
+Fixpoint env_length (e: Environment) : nat :=
+  match e with
+  | env e' => length e'
+  end.
+
+Fixpoint sv_size (sv : StorableValue) : nat :=
+  match sv with
+  | st_int _ => 1
+  | st_bool _ => 1
+  | st_clos e _ c => 1 + (env_length e) + (code_length c)
+  | st_rec_clos e _ _ c => 1 + (env_length e) + (code_length c)
+  end.
+
+
+Fixpoint from_code (c : Code) : list Instruction :=
+  match c with
+  | code c' => c'
   end.
 
 Definition Stack := list StorableValue.
@@ -728,29 +749,115 @@ Inductive SSM_OP_Star : State -> State -> Prop :=
   | sos_trans : forall (s1 s2 s3 : State), s1 |> s2 -> s2 |>* s3 -> s1 |>* s3
 where "A |>* B" := (SSM_OP_Star A B).
 
-Check length.
 
-Fixpoint cost (A B : State) (h : A |> B) : nat :=
-  match h with
-  | push_int _ _ _ _ _ => 1
-  | push_bool _ _ _ _ _ => 1
-  | pop_value _ _ _ _ _ => 1
-  | copy_value _ _ _ _ _ => 1
-  | add_value _ _ _ _ _ _ => 4
-  | eq_value _ _ _ _ _ _ => 4
-  | gt_value _ _ _ _ _ _ => 4
-  | and_value _ _ _ _ _ _ => 4
-  | not_value _ _ _ _ _ => 3
-  | jump _ _ _ _ n _ => n
-  | jump_true _ _ _ _ n _ => n+2
-  | jump_false _ _ _ _ _  => 2
-  | var_lookup _ _ e _ _ _ _ => 1 + (length e)
-  | closure _ _ _ e _ _ => 1 + (length e)
-  | r_closure _ _ _ _ e _ _ => 1 + (length e)
-  | apply_normal c e _ _ _ s _ _ => 3 + (length s) + (length e) + (length c)
-  | apply_rec c e _ _ _ _ s _ _ => 4 + (length s) + (length e) + (length c)
-  | pop_closure _ _ _ _ _ _ => 5
+
+
+Definition which_comp (op : nat -> nat -> bool) :=
+  match (op 1 1) with
+  | true => EQ
+  | false => GT
   end.
+
+
+
+
+Fixpoint compile (t : term) : Code :=
+match t with
+  | t_num n => code [[INT n]]
+  | t_bool b => code [[BOOL b]]
+  | t_op t1 (op_arith _) t2 => code ((from_code (compile t1)) ++ (from_code (compile t2)) ++ [[ ADD ]])
+  | t_op t1 (op_comp c) t2 => code ((from_code (compile t1)) ++ (from_code (compile t2)) ++ [[ (which_comp c)]])
+  | t_if e1 e2 e3 => code (
+                            (from_code (compile e1)) ++
+                            [[JUMPIFTRUE (code_length (compile e3))]] ++
+                            (from_code (compile e3)) ++
+                            [[JUMP (code_length (compile e2))]] ++
+                            (from_code (compile e2))
+                           )
+  | t_var x => code [[VAR x]]
+  | t_app e1 e2 => code (
+                          (from_code (compile e2)) ++
+                          (from_code (compile e1)) ++
+                          [[APPLY]]
+                        )
+  | t_fun y T e1 => code [[FUN y (compile e1)]]
+  | t_let y T e1 e2 => code (
+                              (from_code (compile e1)) ++
+                              [[FUN y (compile e2)]] ++
+                              [[APPLY]]
+                            )
+  | t_rec f T1 T2 y e1 e2 => code (
+                                    (RFUN f y (compile e1)) ::
+                                    (FUN f (compile e2)) ::
+                                    APPLY :: nil)
+end.
+
+
+
+
+Reserved Notation "A |--> B" (at level 90, no associativity).
+Inductive c_step : term -> term -> Set :=
+  | c_e_op1      : forall (o : op), forall (e1 e2 e1' : term),
+      e1 |--> e1' -> (t_op e1 o e2) |--> (t_op e1' o e2)
+
+  | c_e_op2      : forall (o : op), forall (e1 e2 e2' : term),
+      e2 |--> e2' -> value e1 -> (t_op e1 o e2) |--> (t_op e1 o e2')
+
+  | c_e_op_arith : forall (n1 n2 : nat) (f : (nat -> nat -> nat)),
+      (t_op (t_num n1) (op_arith f) (t_num n2)) |--> t_num (f n1 n2)
+
+  | c_e_op_comp  : forall (n1 n2 : nat) (f : (nat -> nat -> bool)),
+      (t_op (t_num n1) (op_comp f) (t_num n2)) |--> t_bool (f n1 n2)
+
+  | c_e_if_t     : forall (e2 e3 : term), (t_if (t_bool true) e2 e3) |--> e2
+  | c_e_if_f     : forall (e2 e3 : term), (t_if (t_bool false) e2 e3) |--> e3
+  | c_e_if       : forall (e1 e1' e2 e3 : term),
+      e1 |--> e1' -> (t_if e1 e2 e3) |--> (t_if e1' e2 e3)
+
+  | c_e_beta     : forall (x : nat) (T : type) (e v : term), value v -> t_app (t_fun x T e) v |--> [x:=v]e
+  | c_e_app2     : forall (e1 e2 e2' : term),
+      e2 |--> e2' -> value e1 -> (t_app e1 e2) |--> (t_app e1 e2')
+
+  | c_e_app1     : forall (e1 e2 e1' : term),
+      e1 |--> e1' -> (t_app e1 e2) |--> (t_app e1' e2)
+
+  | c_e_let1     : forall (x : nat), forall (T : type), forall (v e : term),
+      value v -> t_let x T v e |--> [x:=v]e
+
+  | c_e_let2     : forall (x : nat), forall (T : type), forall (e1 e1' e2 : term),
+      e1 |--> e1' -> t_let x T e1 e2 |--> t_let x T e1' e2
+
+  | c_e_rec      : forall (f y : nat) (T1 T2 : type) (e1 e2 : term),
+      t_rec f T1 T2 y e1 e2 |--> [f:=(t_fun y T1 (t_rec f T1 T2 y e1 e1))]e2
+
+where "A |--> B" := (c_step A B).
+
+
+Inductive multi_cost : term -> nat -> term -> Set :=
+  | multi_cost_refl : forall (t: term), multi_cost t 0 t
+  | multi_cost_trans: forall (t1 t2 t3: term) (n: nat),
+      (t1 |--> t2) -> multi_cost t2 n t3 -> multi_cost t1 (n+1) t3.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
