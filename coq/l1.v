@@ -9,7 +9,7 @@ From Coq Require Import omega.Omega.
 Require Import Nat.
 Require Import List.
 
-
+Ltac inv H := inversion H; clear H; subst.
 
 Lemma exists_not_forall : forall (X : Type) (P : X -> Prop),
   (exists x, ~ P x) -> ~ (forall x, P x).
@@ -383,33 +383,40 @@ Hint Constructors value.
 Hint Constructors type.
 Hint Constructors op.
 
+
+
   intros. remember (@empty type) as gamma. induction H; auto;
   right; auto; try (pose (IHcheck1 Heqgamma)); try (pose (IHcheck2 Heqgamma));
   try (pose (IHcheck3 Heqgamma)).
-  - destruct o. destruct o0.
-    + subst. pose (value_nat_is_num empty e1 H H1).
-      inversion e. subst. pose (value_nat_is_num empty e2 H0 H2).
-      inversion e0. subst. exists (t_num (f x x0)). auto.
-    + inversion H2. exists (t_op e1 (op_arith f) x). auto.
-    + inversion H1. exists (t_op x (op_arith f) e2). auto.
-  - destruct o. destruct o0.
-    + subst. pose (value_nat_is_num empty e1 H H1).
-      inversion e. subst. pose (value_nat_is_num empty e2 H0 H2).
-      inversion e0. subst. exists (t_bool (f x x0)). auto.
-    + inversion H2. exists (t_op e1 (op_comp f) x). auto.
-    + inversion H1. exists (t_op x (op_comp f) e2). auto.
-  - destruct o. apply value_bool_is_bool in H. destruct H; subst.
-    exists t2; auto. exists t3; auto. auto. inversion H2.
-    exists (t_if x t2 t3). auto.
-  - inversion Heqgamma. subst. inversion H.
-  - destruct o. apply value_fun_is_fun in H. inversion H. inversion H2.
-    subst. destruct o0. exists ([x:=e2]x0). auto.
-    inversion H3. exists (t_app (t_fun x T x0) x1). auto.
-    auto. inversion H1. exists (t_app x e2). auto.
-  - destruct o. exists ([x:=e1] e2). auto.
-    inversion H1. exists (t_let x T x0 e2). auto.
-  - clear IHcheck1. clear IHcheck2.
-    exists ([f:=(t_fun x T1 (t_rec f T1 T2 x e1 e1))]e2). auto.
+  - destruct o; destruct o0; clear IHcheck1; clear IHcheck2.
+    + subst. eapply value_nat_is_num in H1. eapply value_nat_is_num in H2.
+      inv H1. inv H2. exists (t_num (f x x0)). auto. apply H0. apply H.
+    + subst. inv H2. exists (t_op e1 (op_arith f) x). auto.
+    + subst. inv H1. exists (t_op x (op_arith f) e2). auto.
+    + inv H1. exists (t_op x (op_arith f) e2). auto.
+  - subst. destruct o; destruct o0; clear IHcheck1; clear IHcheck2.
+    + eapply value_nat_is_num in H; eapply value_nat_is_num in H0; auto.
+      inv H0. inv H. exists (t_bool (f x0 x)). auto.
+    + inv H2. exists (t_op e1 (op_comp f) x). auto.
+    + inv H1. exists (t_op x (op_comp f) e2). auto.
+    + inv H1. exists (t_op x (op_comp f) e2). auto.
+  - destruct o. eapply value_bool_is_bool in H2.
+    destruct H2. exists t2. rewrite H2. auto.
+    exists t3. rewrite H2. auto. apply H.
+    inv H2. exists (t_if x t2 t3). auto.
+  - subst. inv H.
+  - destruct o; destruct o0; clear IHcheck1; clear IHcheck2.
+    apply value_fun_is_fun with (g := empty) (T := T) (T' := T') in H1.
+    inv H1. inv H3. exists ([x:=e2]x0). auto.
+    subst. auto. inv H2. exists (t_app e1 x). auto.
+    inv H1. exists (t_app x e2). auto.
+    inv H1. exists (t_app x e2). auto.
+  - destruct o; clear IHcheck1; clear IHcheck2.
+    + exists ([x:=e1]e2). auto.
+    + inv H1. exists (t_let x T x0 e2). auto.
+  - subst. clear IHcheck1; clear IHcheck2.
+    exists ([f:=(t_fun x T1 (t_rec f T1 T2 x e1 e1))]e2).
+    auto.
 Qed.
 
 
@@ -471,60 +478,70 @@ Proof.
     rewrite update_neq in H12; auto.
 Qed.
 
-Lemma free_is_equal : forall x t e,
-  ~ appears_free_in x t ->
-  [x := e]t = t.
+Corollary typable_empty_closed : forall t T,
+    empty |: t ===> T  ->
+    closed t.
 Proof.
-Hint Constructors step.
-Hint Constructors check.
-Hint Constructors term.
-Hint Constructors value.
-Hint Constructors type.
-Hint Constructors op.
-Hint Constructors appears_free_in.
+  intros. unfold closed. intros. intro. generalize dependent T.
+  induction H0; intros; try inversion H; subst; auto; try (solve [inversion H2]);
+    eapply IHappears_free_in; eauto.
+  - inversion H1; subst; auto. pose (free_in_context x t T' (f |-> T) H0 H7).
+    inversion e; subst; auto. unfold update in H2. unfold t_update in H2.
+    Search eqb. apply eqb_false_iff in H. rewrite H in H2.
+    inversion H2.
+  - inversion H1; subst; auto. pose (free_in_context x t2 T0 (e|->T) H0
+    H9). inversion e0. unfold update in H2. unfold t_update in H2.
+    apply eqb_false_iff in H. rewrite H in H2. inversion H2.
+  - inversion H2; subst; auto.
+    apply free_in_context with (T := T2) (Gamma := (y |-> T1; f |-> type_fun T1 T2)) in H1.
+    inv H1. rewrite update_neq in H3. rewrite update_neq in H3. inv H3.
+    auto. auto. auto.
+  - inv H1. apply free_in_context with (T := T) (Gamma := (f |-> type_fun T1 T2)) in H0.
+    inv H0. rewrite update_neq in H1. inv H1. auto. auto.
+  Unshelve. apply T. apply T. apply T. apply T. Qed.
 
-  intros. induction t; auto.
-  - assert (~ appears_free_in x t1).
-    intro. inversion H0; auto. assert (~ appears_free_in x t2).
-    intro. inversion H1; auto. apply IHt1 in H0. apply IHt2 in H1.
-    simpl. rewrite H0. rewrite H1. auto.
-  - assert (~ appears_free_in x t1). intro.
-    inversion H0; auto. assert (~ appears_free_in x t2). intro.
-    inversion H1; auto. assert (~ appears_free_in x t3). intro.
-    inversion H2; auto. apply IHt1 in H0. apply IHt2 in H1.
-    apply IHt3 in H2. simpl. rewrite H0. rewrite H1. rewrite H2.
+  
+  
+  
+  
+
+Lemma context_invariance : forall Gamma Gamma' t T,
+     Gamma |: t ===> T  ->
+     (forall x, appears_free_in x t -> Gamma x = Gamma' x) ->
+     Gamma' |: t ===> T.
+Proof.
+  intros. generalize dependent Gamma'.  induction H; intros; auto.
+  - apply tp_arith; [apply IHcheck1 | apply IHcheck2]; intros; apply H1;
+    [apply afi_op1 | apply afi_op2]; auto.
+  - apply tp_comp; [apply IHcheck1 | apply IHcheck2]; intros; apply H1;
+    [apply afi_op1 | apply afi_op2]; auto.
+  - apply tp_if; [apply IHcheck1 | apply IHcheck2 | apply IHcheck3]; intros;
+    apply H2; [apply afi_if1 | apply afi_if2 | apply afi_if3];
     auto.
-  - destruct (classic (x = n)).
-    + subst. unfold not in H.
-      assert (appears_free_in n (t_var n)). auto. apply H in H0.
-      inversion H0.
-    + simpl. Search beq_nat. pose (eqb_false_iff x n H0).
-      rewrite e0. auto.
-  - assert (~ appears_free_in x t1). auto. assert (~ appears_free_in x t2).
-    auto. apply IHt1 in H0. apply IHt2 in H1. simpl. rewrite H0.
-    rewrite H1. auto.
-  - destruct (classic (x = n)).
-    + subst. simpl. rewrite <- beq_nat_refl. auto.
-    + assert (~ appears_free_in x t0). auto. apply IHt in H1.
-      simpl. pose (eqb_false_iff x n H0). rewrite e0.
-      rewrite H1. auto.
-  - destruct (classic (x = n)).
-    + subst. simpl. rewrite <- beq_nat_refl.
-      assert (~ appears_free_in n t2). auto. apply IHt1 in H0.
-      rewrite H0. auto.
-    + simpl. pose (eqb_false_iff x n H0). rewrite e0.
-      assert (~ appears_free_in x t2). auto. assert (~ appears_free_in x t3).
-      auto. apply IHt1 in H1. apply IHt2 in H2. rewrite H1. rewrite H2.
-       auto.
-  - destruct (classic (x = n)).
-    + subst. destruct (classic (n = n0)).
-      * subst. simpl. rewrite <- beq_nat_refl. auto.
-      * simpl. rewrite <- beq_nat_refl. pose (eqb_false_iff n n0 H0).
-        rewrite e0. clear e0. assert (~ appears_free_in n t4).
-        Admitted.
-
-
-
+  - apply tp_var. rewrite <- H0. auto.
+    apply afi_var.
+  - apply tp_fun. apply IHcheck. intros.
+    unfold update. unfold t_update. destruct eqb eqn:eqxx0.
+    auto. apply H0. apply afi_fun. rewrite Nat.eqb_neq in eqxx0.
+    auto. auto.
+  - apply tp_app with (T := T) (T' := T').
+    apply IHcheck1. intros. apply H1. apply afi_app1.
+    auto. apply IHcheck2. intros. apply H1. apply afi_app2.
+    auto.
+  - apply tp_let. apply IHcheck1. intros. apply H1.
+    apply afi_let1. auto. apply IHcheck2.
+    intros. unfold update. unfold t_update.
+    destruct eqb eqn:eqxx0. auto. apply H1. apply afi_let2.
+    rewrite Nat.eqb_neq in eqxx0. auto. auto.
+  - apply tp_rec. auto. apply IHcheck1. intros.
+    unfold update. unfold t_update. destruct (x =? x0) eqn:eqxx0;
+    destruct (f =? x0) eqn:eqfx0.
+    auto. auto. auto. apply H2. apply afi_rec1. rewrite <- Nat.eqb_neq.
+    auto. rewrite <- Nat.eqb_neq. auto. auto.
+    apply IHcheck2. intros. unfold update. unfold t_update.
+    destruct (f =? x0) eqn:eqfx0. auto. apply H2.
+    apply afi_rec2. rewrite <- Nat.eqb_neq. auto. auto.
+Qed.
 
 
 
@@ -533,22 +550,44 @@ Lemma substitution_lemma : forall Gamma x U t v T,
   empty |: v ===> U   ->
   Gamma |: [x:=v]t ===> T.
 Proof.
-
-Hint Constructors step.
-Hint Constructors check.
-Hint Constructors term.
-Hint Constructors value.
-Hint Constructors type.
-Hint Constructors op.
-
-
-  intros. generalize dependent Gamma. generalize dependent T.
-  induction H0.
-  - intros. destruct (classic (appears_free_in x t)).
-    + admit.
-    Admitted.
-
-
+  intros. generalize dependent T. generalize dependent Gamma.
+  induction t; intros; auto; simpl.
+  - eapply context_invariance. apply H. intros.
+    inv H1.
+  - eapply context_invariance. apply H. intros.
+    inv H1.
+  - inv H; [eapply tp_arith; apply IHt1 in H6; auto | eapply tp_comp; apply IHt2 in H7; auto].
+  - inv H. apply tp_if; [apply IHt1 in H5 |
+    apply IHt2 in H7 | apply IHt3 in H8]; auto.
+  - destruct (x =? n) eqn:Heqx. rewrite Nat.eqb_eq in Heqx.
+    subst. inv H. rewrite update_eq in H3. inv H3.
+    eapply context_invariance in H0. apply H0.
+    intros. apply typable_empty_closed in H0.
+    unfold closed in H0. apply H0 in H. inv H.
+    eapply context_invariance in H. apply H.
+    intros. rewrite Nat.eqb_neq in Heqx.
+    inv H1. rewrite update_neq; auto.
+  - inv H. eapply tp_app. apply IHt1. apply H4.
+    apply IHt2. auto.
+  - destruct (x =? n) eqn:Heq. rewrite Nat.eqb_eq in Heq.
+    subst. inv H. eapply tp_fun. rewrite update_shadow in H6.
+    auto. inv H. eapply tp_fun. apply IHt.
+    rewrite Nat.eqb_neq in Heq. rewrite update_permute.
+    auto. auto.
+  - destruct (x =? n) eqn:Heq. rewrite Nat.eqb_eq in Heq.
+    subst. eapply tp_let. apply IHt1. inv H.
+    apply H7. inv H. rewrite update_shadow in H8. auto.
+    rewrite Nat.eqb_neq in Heq. eapply tp_let. apply IHt1.
+    inv H. auto. apply IHt2. inv H. rewrite update_permute.
+    auto. auto.
+  - destruct (x =? n) eqn:Heq1; destruct (x =? n0) eqn:Heq2.
+    + rewrite Nat.eqb_eq in Heq1. rewrite Nat.eqb_eq in Heq2.
+      subst. inv H. destruct H9. auto.
+    + rewrite Nat.eqb_eq in Heq1. subst.
+      inv H. eapply tp_rec. auto. rewrite update_shadow in H10.
+      auto. apply IHt2. clear Heq2.
+      eapply context_invariance.
+      apply H11. intros. rewrite update_same in H11. Admitted.
 
 
 Theorem preservation : forall (t t' : term) (T : type),
@@ -643,7 +682,7 @@ with inst_mut := Induction for Instruction Sort Prop.
 
 
 Reserved Notation "A |> B" (at level 90, no associativity).
-Inductive SSM_OP : State -> State -> Type :=
+Inductive SSM_OP : State -> State -> Prop :=
   | push_int : forall (z : int), forall (c : list Instruction),
            forall (s : Stack), forall (e : Environment),
            forall (d : Dump),
@@ -792,55 +831,175 @@ match t with
                                     APPLY :: nil)
 end.
 
+Reserved Notation "A |=| B" (at level 90, no associativity).
+Inductive term_eq_sv : term -> StorableValue -> Prop :=
+  | num_eq_int : forall n, t_num n |=| st_int n
+  | bool_eq_bool : forall b, t_bool b |=| st_bool b
+  | fun_eq_clos : forall 
+where " A |=| B" := (term_eq_sv A B).
+
+Inductive term :=
+  | t_num  : nat -> term
+  | t_bool : bool -> term
+  | t_op   : term -> op -> term -> term
+  | t_if   : term -> term -> term -> term
+  | t_var  : nat -> term
+  | t_app  : term -> term -> term
+  | t_fun  : nat -> type -> term -> term
+  | t_let  : nat -> type -> term -> term -> term
+  | t_rec  : nat -> type -> type -> nat -> term -> term -> term.
+
+Inductive value : term -> Prop :=
+  | val_nat : forall n : nat , value (t_num n)
+  | val_bool : forall b : bool, value (t_bool b)
+  | val_fun : forall (x: nat) (t: type), forall e: term, value (t_fun x t e).
+
+Inductive StorableValue : Type :=
+  | st_int : int -> StorableValue
+  | st_bool : bool -> StorableValue
+  | st_clos : Environment -> ident -> Code -> StorableValue
+  | st_rec_clos : Environment -> ident -> ident -> Code -> StorableValue
+  with Environment : Type :=
+  | env : (lookup_list StorableValue) -> Environment
+  with Code : Set :=
+  | code : list Instruction -> Code
+  with Instruction : Set :=
+  | INT : int -> Instruction
+  | BOOL : bool -> Instruction
+  | POP : Instruction
+  | COPY : Instruction
+  | ADD : Instruction
+  | EQ : Instruction
+  | GT : Instruction
+  | AND : Instruction
+  | NOT : Instruction
+  | JUMP : nat -> Instruction
+  | JUMPIFTRUE : nat -> Instruction
+  | VAR : ident -> Instruction
+  | FUN : ident -> Code -> Instruction
+  | RFUN : ident -> ident -> Code -> Instruction
+  | APPLY : Instruction.
+
+
+Inductive multi_cost_language : term -> nat -> term -> Prop :=
+  | multi_costl_refl : forall (t: term), multi_cost_language t 0 t
+  | multi_costl_trans: forall (t1 t2 t3: term) (n: nat),
+      (t1 ---> t2) -> multi_cost_language t2 n t3 -> multi_cost_language t1 (n+1) t3.
+
+Inductive multi_cost_code : State -> nat -> State -> Prop :=
+  | multi_costc_refl : forall (s : State), multi_cost_code s 0 s
+  | multi_costc_trans: forall (s1 s2 s3 : State) (n: nat),
+    (s1 |> s2) -> multi_cost_code s2 n s3 -> multi_cost_code s1 (n+1) s3.
+
+Fixpoint term_size (t: term) : nat :=
+  match t with
+  | t_num _ => 1
+  | t_bool _ => 1
+  | t_op t1 _ t2 => 1 + (term_size t1) + (term_size t2)
+  | t_if t1 t2 t3 => 1 + (term_size t1) + (term_size t2) + (term_size t3)
+  | t_var _ => 1
+  | t_app t1 t2 => 1 + (term_size t2) + (term_size t1)
+  | t_fun _ _ t1 => 1 + (term_size t1)
+  | t_let _ _ t1 t2 => 1 + (term_size t1) + (term_size t2)
+  | t_rec _ _ _ _ t1 t2 => 1 + (term_size t1) + (term_size t2)
+  end.
+
+Fixpoint code_size (c: Code) : nat :=
+  code_length c.
+
+Lemma code_length_is_size :
+  forall c, code_size c = length (from_code c).
+Proof.
+  intros. induction c; auto. Qed.
+
+Lemma length_distr : forall A (l1 l2 : list A), length (l1 ++ l2) = (length l1) + (length l2).
+Proof.
+  intros. induction l1; induction l2; auto.
+  - simpl. Search app. rewrite <- app_nil_end. auto.
+  - simpl. rewrite IHl1. simpl. auto. Qed.
 
 
 
-Reserved Notation "A |--> B" (at level 90, no associativity).
-Inductive c_step : term -> term -> Set :=
-  | c_e_op1      : forall (o : op), forall (e1 e2 e1' : term),
-      e1 |--> e1' -> (t_op e1 o e2) |--> (t_op e1' o e2)
-
-  | c_e_op2      : forall (o : op), forall (e1 e2 e2' : term),
-      e2 |--> e2' -> value e1 -> (t_op e1 o e2) |--> (t_op e1 o e2')
-
-  | c_e_op_arith : forall (n1 n2 : nat) (f : (nat -> nat -> nat)),
-      (t_op (t_num n1) (op_arith f) (t_num n2)) |--> t_num (f n1 n2)
-
-  | c_e_op_comp  : forall (n1 n2 : nat) (f : (nat -> nat -> bool)),
-      (t_op (t_num n1) (op_comp f) (t_num n2)) |--> t_bool (f n1 n2)
-
-  | c_e_if_t     : forall (e2 e3 : term), (t_if (t_bool true) e2 e3) |--> e2
-  | c_e_if_f     : forall (e2 e3 : term), (t_if (t_bool false) e2 e3) |--> e3
-  | c_e_if       : forall (e1 e1' e2 e3 : term),
-      e1 |--> e1' -> (t_if e1 e2 e3) |--> (t_if e1' e2 e3)
-
-  | c_e_beta     : forall (x : nat) (T : type) (e v : term), value v -> t_app (t_fun x T e) v |--> [x:=v]e
-  | c_e_app2     : forall (e1 e2 e2' : term),
-      e2 |--> e2' -> value e1 -> (t_app e1 e2) |--> (t_app e1 e2')
-
-  | c_e_app1     : forall (e1 e2 e1' : term),
-      e1 |--> e1' -> (t_app e1 e2) |--> (t_app e1' e2)
-
-  | c_e_let1     : forall (x : nat), forall (T : type), forall (v e : term),
-      value v -> t_let x T v e |--> [x:=v]e
-
-  | c_e_let2     : forall (x : nat), forall (T : type), forall (e1 e1' e2 : term),
-      e1 |--> e1' -> t_let x T e1 e2 |--> t_let x T e1' e2
-
-  | c_e_rec      : forall (f y : nat) (T1 T2 : type) (e1 e2 : term),
-      t_rec f T1 T2 y e1 e2 |--> [f:=(t_fun y T1 (t_rec f T1 T2 y e1 e1))]e2
-
-where "A |--> B" := (c_step A B).
-
-
-Inductive multi_cost : term -> nat -> term -> Set :=
-  | multi_cost_refl : forall (t: term), multi_cost t 0 t
-  | multi_cost_trans: forall (t1 t2 t3: term) (n: nat),
-      (t1 |--> t2) -> multi_cost t2 n t3 -> multi_cost t1 (n+1) t3.
-
-
-
-
+Theorem length_relation :
+  forall t, (code_size (compile t)) < 2 * (term_size t).
+Proof.
+  intros. induction t; try (solve [simpl; omega]).
+  - destruct o. assert (term_size (t_op t1 (op_arith n) t2) =
+    1 + (term_size t1) + (term_size t2)). auto.
+    rewrite H. clear H. assert (compile (t_op t1 (op_arith n) t2) =
+    code ((from_code (compile t1)) ++ (from_code (compile t2)) ++ [[ ADD ]])).
+    auto. rewrite H. clear H. assert (code_size (code (from_code (compile t1) ++ from_code (compile t2) ++ [[ADD]]))
+    = (code_size (compile t1)) + (code_size (compile t2)) + 1).
+    simpl. rewrite length_distr. rewrite length_distr. simpl.
+    rewrite <- code_length_is_size. rewrite <- code_length_is_size.
+    rewrite plus_assoc. auto. rewrite H. clear H.
+    omega.
+    assert (compile (t_op t1 (op_comp b) t2) = code ((from_code (compile t1)) ++ (from_code (compile t2)) ++ [[ (which_comp b)]])).
+    auto. rewrite H. clear H. assert (term_size (t_op t1 (op_comp b) t2) =
+    1 + (term_size t1) + (term_size t2)). auto. rewrite H. clear H.
+    assert (code_size (code (from_code (compile t1) ++ from_code (compile t2) ++ [[(which_comp b)]]))
+    = (code_size (compile t1)) + (code_size (compile t2)) + 1).
+    simpl. rewrite length_distr. rewrite length_distr. simpl.
+    rewrite code_length_is_size. rewrite code_length_is_size.
+    rewrite plus_assoc. auto. rewrite H. clear H.
+    omega.
+  - assert (term_size (t_if t1 t2 t3) = 1+ term_size t1 + term_size t2 + term_size t3).
+    auto. rewrite H. clear H. assert (
+    compile (t_if t1 t2 t3) = code (
+                            (from_code (compile t1)) ++
+                            [[JUMPIFTRUE (code_length (compile t3))]] ++
+                            (from_code (compile t3)) ++
+                            [[JUMP (code_length (compile t2))]] ++
+                            (from_code (compile t2))
+                           )). auto. rewrite H. clear H.
+   assert (
+   code_size
+  (code
+     (from_code (compile t1) ++
+      [[JUMPIFTRUE (code_length (compile t3))]] ++
+      from_code (compile t3) ++
+      [[JUMP (code_length (compile t2))]] ++
+      from_code (compile t2))) =
+  code_size (compile t1) + 1 + code_size (compile t3) +
+  1 + code_size (compile t2)). simpl. repeat (rewrite length_distr).
+  simpl. assert (length
+     (from_code (compile t3) ++
+      JUMP (code_length (compile t2)) :: from_code (compile t2)) =
+  length (from_code (compile t3)) +
+  1 + (length (from_code (compile t2)))). rewrite length_distr.
+  simpl. omega. rewrite H. clear H. repeat (rewrite code_length_is_size).
+  omega. rewrite H. clear H. omega.
+ - assert (term_size (t_app t1 t2) = 1 + (term_size t2) + (term_size t1)).
+   auto. rewrite H. clear H. assert (compile (t_app t1 t2) =
+   code (
+                          (from_code (compile t2)) ++
+                          (from_code (compile t1)) ++
+                          [[APPLY]]
+                        )). auto. rewrite H. clear H.
+   assert (code_size
+  (code
+     (from_code (compile t2) ++
+      from_code (compile t1) ++ [[APPLY]])) =
+  code_size (compile t2) + code_size (compile t1) + 1).
+  simpl. rewrite length_distr. rewrite length_distr. simpl.
+  rewrite code_length_is_size. rewrite code_length_is_size.
+  repeat (rewrite plus_assoc). auto. rewrite H. clear H. omega.
+  - assert (term_size (t_let n t1 t2 t3) = 1 + (term_size t2) + (term_size t3)).
+    auto. rewrite H. clear H. assert (
+    compile (t_let n t1 t2 t3) =
+    code (
+                              (from_code (compile t2)) ++
+                              [[FUN n (compile t3)]] ++
+                              [[APPLY]])). auto. rewrite H. clear H.
+  assert (
+  code_size
+  (code
+     (from_code (compile t2) ++
+      [[FUN n (compile t3)]] ++ [[APPLY]])) =
+  code_size (compile t2) + 1 + 1). simpl.
+  rewrite length_distr. assert (length (FUN n (compile t3) :: [[APPLY]])
+  = 2). auto. rewrite H. clear H. rewrite code_length_is_size. omega.
+  rewrite H. clear H. omega. Qed.
 
 
 
