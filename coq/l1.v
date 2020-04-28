@@ -830,7 +830,7 @@ match t with
                                     (FUN f (compile e2)) ::
                                     APPLY :: nil)
 end.
-
+(*
 Reserved Notation "A |=| B" (at level 90, no associativity).
 Inductive term_eq_sv : term -> StorableValue -> Prop :=
   | num_eq_int : forall n, t_num n |=| st_int n
@@ -879,7 +879,7 @@ Inductive StorableValue : Type :=
   | FUN : ident -> Code -> Instruction
   | RFUN : ident -> ident -> Code -> Instruction
   | APPLY : Instruction.
-
+*)
 
 Inductive multi_cost_language : term -> nat -> term -> Prop :=
   | multi_costl_refl : forall (t: term), multi_cost_language t 0 t
