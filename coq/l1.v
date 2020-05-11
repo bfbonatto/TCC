@@ -896,31 +896,6 @@ Fixpoint term_size (t: term) : nat :=
   | t_rec _ _ _ _ t1 t2 => 3 + (term_size t1) + (term_size t2)
   end.
 
-Fixpoint code_size (c: Code) : nat :=
-  match c with
-  | [] => 0
-  | INT _ :: c' => 2 + (code_size c')
-  | BOOL _ :: c' => 2 + (code_size c')
-  | JUMP _ :: c' => 2 + (code_size c')
-  | JUMPIFTRUE _ :: c' => 2 + (code_size c')
-  | VAR _ :: c' => 2 + (code_size c')
-  | FUN _ ci :: c' => 2 + (code_size ci) + (code_size c')
-  | _ => 1
-  end.
-
-
-(*  match c with
-  | INT _ => 2
-  | BOOL _ => 2
-  | JUMP _ => 2
-  | JUMPIFTRUE _ => 2
-  | VAR _ => 2
-  | FUN _ c' => 2 + (code_size c')
-  | RFUN _ _ c' => 3 + (code_size c')
-  | _ => 1
-  end. *)
-
-
 (*
 
 | INT : int -> Instruction
@@ -939,13 +914,32 @@ Fixpoint code_size (c: Code) : nat :=
   | RFUN : ident -> ident -> Code -> Instruction
   | APPLY : Instruction.*)
 
+(*Fixpoint code_size (c: Code) : nat :=
+  match c with
+  | [] => 0
+  | INT _ :: c' => 2 + (code_size c')
+  | BOOL _ :: c' => 2 + (code_size c')
+  | JUMP _ :: c' => 2 + (code_size c')
+  | JUMPIFTRUE _ :: c' => 2 + (code_size c')
+  | VAR _ :: c' => 2 + (code_size c')
+  | FUN _ ci :: c' => 2 + (code_size ci) + (code_size c')
+  | _ => 1
+  end. *)
+
+
+(*  match c with
+  | INT _ => 2
+  | BOOL _ => 2
+  | JUMP _ => 2
+  | JUMPIFTRUE _ => 2
+  | VAR _ => 2
+  | FUN _ c' => 2 + (code_size c')
+  | RFUN _ _ c' => 3 + (code_size c')
+  | _ => 1
+  end. *)
 
 
 
-Lemma code_length_is_size :
-  forall c, code_size c = length ( c).
-Proof.
-  intros. induction c; auto. Qed.
 
 Lemma length_distr : forall A (l1 l2 : list A), length (l1 ++ l2) = (length l1) + (length l2).
 Proof.
@@ -956,26 +950,24 @@ Proof.
 
 
 Theorem length_relation :
-  forall t, (code_size (compile t)) < 2 * (term_size t).
+  forall t, (length (compile t)) < 2 * (term_size t).
 Proof.
   intros. induction t; try (solve [simpl; omega]).
   - destruct o. assert (term_size (t_op t1 (op_arith n) t2) =
     1 + (term_size t1) + (term_size t2)). auto.
     rewrite H. clear H. assert (compile (t_op t1 (op_arith n) t2) =
     (( (compile t1)) ++ ( (compile t2)) ++ [[ ADD ]])).
-    auto. rewrite H. clear H. assert (code_size (( (compile t1) ++  (compile t2) ++ [[ADD]]))
-    = (code_size (compile t1)) + (code_size (compile t2)) + 1).
-    simpl. rewrite length_distr. rewrite length_distr. simpl.
-    rewrite <- code_length_is_size. rewrite <- code_length_is_size.
+    auto. rewrite H. clear H. assert (length (( (compile t1) ++  (compile t2) ++ [[ADD]]))
+    = (length (compile t1)) + (length (compile t2)) + 1).
+    simpl.  rewrite length_distr. rewrite length_distr. simpl.
     rewrite plus_assoc. auto. rewrite H. clear H.
     omega.
     assert (compile (t_op t1 (op_comp b) t2) = (( (compile t1)) ++ ( (compile t2)) ++ [[ (which_comp b)]])).
     auto. rewrite H. clear H. assert (term_size (t_op t1 (op_comp b) t2) =
     1 + (term_size t1) + (term_size t2)). auto. rewrite H. clear H.
-    assert (code_size (( (compile t1) ++  (compile t2) ++ [[(which_comp b)]]))
-    = (code_size (compile t1)) + (code_size (compile t2)) + 1).
+    assert (length (( (compile t1) ++  (compile t2) ++ [[(which_comp b)]]))
+    = (length (compile t1)) + (length (compile t2)) + 1).
     simpl. rewrite length_distr. rewrite length_distr. simpl.
-    rewrite code_length_is_size. rewrite code_length_is_size.
     rewrite plus_assoc. auto. rewrite H. clear H.
     omega.
   - assert (term_size (t_if t1 t2 t3) = 1+ term_size t1 + term_size t2 + term_size t3).
@@ -988,15 +980,15 @@ Proof.
                             ( (compile t2))
                            )). auto. rewrite H. clear H.
    assert (
-   code_size
-  (code
+   length
+  (
      ( (compile t1) ++
       [[JUMPIFTRUE (code_length (compile t3))]] ++
        (compile t3) ++
       [[JUMP (code_length (compile t2))]] ++
        (compile t2))) =
-  code_size (compile t1) + 1 + code_size (compile t3) +
-  1 + code_size (compile t2)). simpl. repeat (rewrite length_distr).
+  length (compile t1) + 1 + length (compile t3) +
+  1 + length (compile t2)). simpl. repeat (rewrite length_distr).
   simpl. assert (length
      ( (compile t3) ++
       JUMP (code_length (compile t2)) ::  (compile t2)) =
@@ -1011,29 +1003,29 @@ Proof.
                           ( (compile t1)) ++
                           [[APPLY]]
                         )). auto. rewrite H. clear H.
-   assert (code_size
-  (code
+   assert (length
+  (
      ( (compile t2) ++
        (compile t1) ++ [[APPLY]])) =
-  code_size (compile t2) + code_size (compile t1) + 1).
+  length (compile t2) + length (compile t1) + 1).
   simpl. rewrite length_distr. rewrite length_distr. simpl.
-  rewrite code_length_is_size. rewrite code_length_is_size.
   repeat (rewrite plus_assoc). auto. rewrite H. clear H. omega.
-  - assert (term_size (t_let n t1 t2 t3) = 1 + (term_size t2) + (term_size t3)).
-    auto. rewrite H. clear H. assert (
+  - assert (term_size (t_let n t1 t2 t3) = 2 + (term_size t2) + (term_size t3)).
+    auto.
+    rewrite H. clear H. assert (
     compile (t_let n t1 t2 t3) =
     (
                               ( (compile t2)) ++
                               [[FUN n (compile t3)]] ++
                               [[APPLY]])). auto. rewrite H. clear H.
   assert (
-  code_size
-  (code
+  length
+  (
      ( (compile t2) ++
       [[FUN n (compile t3)]] ++ [[APPLY]])) =
-  code_size (compile t2) + 1 + 1). simpl.
+  length (compile t2) + 1 + 1). simpl.
   rewrite length_distr. assert (length (FUN n (compile t3) :: [[APPLY]])
-  = 2). auto. rewrite H. clear H. rewrite code_length_is_size. omega.
+  = 2). auto. rewrite H. clear H. omega.
   rewrite H. clear H. omega. Qed.
 
 
