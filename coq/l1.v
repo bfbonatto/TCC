@@ -623,12 +623,10 @@ Fixpoint lookup (A : Type) (x: ident) (l : lookup_list A) : option A :=
 Inductive StorableValue : Type :=
   | st_int : int -> StorableValue
   | st_bool : bool -> StorableValue
-  | st_clos : Environment -> ident -> Code -> StorableValue
-  | st_rec_clos : Environment -> ident -> ident -> Code -> StorableValue
+  | st_clos : Environment -> ident -> list Instruction -> StorableValue
+  | st_rec_clos : Environment -> ident -> ident -> list Instruction -> StorableValue
   with Environment : Type :=
   | env : (lookup_list StorableValue) -> Environment
-  with Code : Set :=
-  | code : list Instruction -> Code
   with Instruction : Set :=
   | INT : int -> Instruction
   | BOOL : bool -> Instruction
@@ -642,14 +640,15 @@ Inductive StorableValue : Type :=
   | JUMP : nat -> Instruction
   | JUMPIFTRUE : nat -> Instruction
   | VAR : ident -> Instruction
-  | FUN : ident -> Code -> Instruction
-  | RFUN : ident -> ident -> Code -> Instruction
+  | FUN : ident -> list Instruction -> Instruction
+  | RFUN : ident -> ident -> list Instruction -> Instruction
   | APPLY : Instruction.
 
+Definition Code := list Instruction.
+
 Fixpoint code_length (c : Code) : nat :=
-  match c with
-  | code c' => length c'
-  end.
+  length c.
+
 Fixpoint env_length (e: Environment) : nat :=
   match e with
   | env e' => length e'
@@ -663,12 +662,6 @@ Fixpoint sv_size (sv : StorableValue) : nat :=
   | st_rec_clos e _ _ c => 1 + (env_length e) + (code_length c)
   end.
 
-
-Fixpoint from_code (c : Code) : list Instruction :=
-  match c with
-  | code c' => c'
-  end.
-
 Definition Stack := list StorableValue.
 Definition Dump := list (Code * Stack * Environment).
 Definition State : Type := (Code * Stack * Environment * Dump).
@@ -677,7 +670,6 @@ Definition State : Type := (Code * Stack * Environment * Dump).
 
 Scheme sv_mut := Induction for StorableValue Sort Prop
 with env_mut := Induction for Environment Sort Prop
-with code_mut := Induction for Code Sort Prop
 with inst_mut := Induction for Instruction Sort Prop.
 
 
@@ -686,93 +678,93 @@ Inductive SSM_OP : State -> State -> Prop :=
   | push_int : forall (z : int), forall (c : list Instruction),
            forall (s : Stack), forall (e : Environment),
            forall (d : Dump),
-    (code (cons (INT z) c), s, e, d) |> (code c, cons (st_int z) s, e, d)
+    ((cons (INT z) c), s, e, d) |> (c, cons (st_int z) s, e, d)
   | push_bool : forall (b : bool), forall (c : list Instruction),
            forall (s : Stack), forall (e : Environment),
            forall (d : Dump),
-    (code (cons (BOOL b) c), s, e, d) |> (code c, cons (st_bool b) s, e, d)
+    ((cons (BOOL b) c), s, e, d) |> ( c, cons (st_bool b) s, e, d)
   | pop_value : forall (c : list Instruction),
                 forall (sv : StorableValue), forall (s : Stack),
                 forall (e : Environment), forall (d : Dump),
-    (code (cons POP c), cons sv s, e, d) |> (code c, s, e, d)
+    ( (cons POP c), cons sv s, e, d) |> ( c, s, e, d)
   | copy_value : forall (c : list Instruction),
                 forall (sv : StorableValue), forall (s : Stack),
                 forall (e : Environment), forall (d : Dump),
-    (code (cons COPY c), cons sv s, e, d) |> (code c, cons sv (cons sv s), e, d)
+    ( (cons COPY c), cons sv s, e, d) |> ( c, cons sv (cons sv s), e, d)
   | add_value : forall (c : list Instruction),
                 forall (z1 z2 : int), forall (s : Stack),
                 forall (e: Environment), forall (d: Dump),
-     (code (cons ADD c), cons (st_int z1) (cons (st_int z2) s), e, d)
-     |> (code c, cons (st_int (z1 + z2)) s, e, d)
+     ( (cons ADD c), cons (st_int z1) (cons (st_int z2) s), e, d)
+     |> ( c, cons (st_int (z1 + z2)) s, e, d)
   
   | eq_value :  forall (c : list Instruction),
                 forall (z1 z2 : int), forall (s : Stack),
                 forall (e: Environment), forall (d: Dump),
-                (code (EQ :: c), st_int z1 :: st_int z2 :: s, e, d)
-                |> (code c, st_bool (beq_nat z1 z2) :: s, e, d)
+                ( (EQ :: c), st_int z1 :: st_int z2 :: s, e, d)
+                |> ( c, st_bool (beq_nat z1 z2) :: s, e, d)
 
   | gt_value: forall (c: list Instruction),
               forall (z1 z2 : int), forall (s: Stack),
               forall (e: Environment), forall (d: Dump),
-              (code (GT :: c), st_int z1 :: st_int z2 :: s, e, d)
-              |> (code c, st_bool (negb (z1 <? z2)) :: s, e, d)
+              ( (GT :: c), st_int z1 :: st_int z2 :: s, e, d)
+              |> ( c, st_bool (negb (z1 <? z2)) :: s, e, d)
 
   | and_value : forall (c : list Instruction),
               forall (b1 b2 : bool), forall (s: Stack),
               forall (e: Environment), forall (d: Dump),
-              (code (AND :: c), st_bool b1 :: st_bool b2 :: s, e, d)
-              |> (code c, st_bool (andb b1 b2) :: s, e, d)
+              ( (AND :: c), st_bool b1 :: st_bool b2 :: s, e, d)
+              |> ( c, st_bool (andb b1 b2) :: s, e, d)
   | not_value : forall (c : list Instruction),
               forall (b : bool), forall (s: Stack),
               forall (e: Environment), forall (d: Dump),
-              (code (NOT :: c), st_bool b :: s, e, d)
-              |> (code c, st_bool (negb b) :: s, e, d)
+              ( (NOT :: c), st_bool b :: s, e, d)
+              |> ( c, st_bool (negb b) :: s, e, d)
    | jump:    forall (c : list Instruction),
               forall (s : Stack), forall (e: Environment),
               forall (d : Dump), forall (n : nat),
               (List.length c) >= n+1 ->
-              (code (JUMP n :: c), s, e, d) |>
-              (code (List.skipn n c), s, e, d)
+              ( (JUMP n :: c), s, e, d) |>
+              ( (List.skipn n c), s, e, d)
    | jump_true : forall (c : list Instruction),
               forall (s : Stack), forall (e: Environment),
               forall (d : Dump), forall (n : nat),
               List.length c >= n+1 ->
-              (code (JUMPIFTRUE n :: c), st_bool true :: s, e, d)
-              |> (code (List.skipn n c), s, e, d)
+              ( (JUMPIFTRUE n :: c), st_bool true :: s, e, d)
+              |> ( (List.skipn n c), s, e, d)
    | jump_false : forall (c : list Instruction),
               forall (s : Stack), forall (e: Environment),
               forall (d : Dump), forall (n : nat),
-              (code (JUMPIFTRUE n :: c), st_bool false :: s, e, d)
-              |> (code c, s, e, d)
+              ( (JUMPIFTRUE n :: c), st_bool false :: s, e, d)
+              |> ( c, s, e, d)
    | var_lookup : forall (c : list Instruction),
               forall (s : Stack), forall (e: lookup_list StorableValue),
               forall (d: Dump), forall (x : ident),
               forall (sv : StorableValue), lookup StorableValue x e = Some sv -> 
-              (code (VAR x :: c), s, env e, d) |>
-              (code c, sv :: s, env e, d)
+              ( (VAR x :: c), s, env e, d) |>
+              ( c, sv :: s, env e, d)
    | closure : forall (c : list Instruction), forall (c' : Code),
               forall (x : ident), forall (e: lookup_list StorableValue), forall (d: Dump),
-              forall (s : Stack), (code (FUN x c' :: c), s, (env e), d) |>
-              (code c, (st_clos (env e) x c') :: s, (env e), d)
+              forall (s : Stack), ( (FUN x c' :: c), s, (env e), d) |>
+              ( c, (st_clos (env e) x c') :: s, (env e), d)
    | r_closure : forall (c : list Instruction), forall (c' : Code),
               forall (x f : ident), forall (e: lookup_list StorableValue), forall (d: Dump),
-              forall (s : Stack), (code (RFUN f x c' :: c), s, env e, d) |>
-              (code c, (st_rec_clos (env e) f x c') :: s, (env e), d)
+              forall (s : Stack), ( (RFUN f x c' :: c), s, env e, d) |>
+              ( c, (st_rec_clos (env e) f x c') :: s, (env e), d)
    | apply_normal : forall (c: list Instruction) (e' : lookup_list StorableValue)
               (x : ident) (c' : Code) (sv : StorableValue) (s : Stack)
               (e : Environment) (d : Dump),
-              (code (APPLY :: c), (st_clos (env e') x c') :: sv :: s, e, d)
+              ( (APPLY :: c), (st_clos (env e') x c') :: sv :: s, e, d)
               |>
-              (c', nil, env ((x, sv) :: e'), (code c, s, e) :: d)
+              (c', nil, env ((x, sv) :: e'), ( c, s, e) :: d)
     | apply_rec : forall (c: list Instruction) (e' : lookup_list StorableValue)
               (x f : ident) (c' : Code) (sv : StorableValue) (s : Stack)
               (e : Environment) (d : Dump),
-              (code (APPLY :: c), (st_rec_clos (env e') f x c') :: sv :: s, e, d)
+              ( (APPLY :: c), (st_rec_clos (env e') f x c') :: sv :: s, e, d)
               |>
-              (c', nil, env ((f, st_rec_clos (env e') f x c') :: (x,sv) :: e'), (code c, s, e) :: d)
+              (c', nil, env ((f, st_rec_clos (env e') f x c') :: (x,sv) :: e'), ( c, s, e) :: d)
     | pop_closure : forall (sv : StorableValue) (s' : Stack) (e e' : Environment)
                     (c' : Code) (d : Dump),
-                    (code nil, sv :: nil, e, (c', s', e') :: d) |>
+                    ( nil, sv :: nil, e, (c', s', e') :: d) |>
                     (c', sv :: s', e', d)
 
 
@@ -780,7 +772,7 @@ where "A |> B" := (SSM_OP A B).
 
 Inductive state_value : State -> Prop :=
   | s_value : forall (sv : StorableValue) (e  : Environment), 
-  state_value (code nil, sv :: nil, e, nil).
+  state_value ( nil, sv :: nil, e, nil).
 
 Reserved Notation "A |>* B" (at level 90, no associativity).
 Inductive SSM_OP_Star : State -> State -> Prop :=
@@ -802,30 +794,30 @@ Definition which_comp (op : nat -> nat -> bool) :=
 
 Fixpoint compile (t : term) : Code :=
 match t with
-  | t_num n => code [[INT n]]
-  | t_bool b => code [[BOOL b]]
-  | t_op t1 (op_arith _) t2 => code ((from_code (compile t1)) ++ (from_code (compile t2)) ++ [[ ADD ]])
-  | t_op t1 (op_comp c) t2 => code ((from_code (compile t1)) ++ (from_code (compile t2)) ++ [[ (which_comp c)]])
-  | t_if e1 e2 e3 => code (
-                            (from_code (compile e1)) ++
+  | t_num n =>  [[INT n]]
+  | t_bool b =>  [[BOOL b]]
+  | t_op t1 (op_arith _) t2 =>  (( (compile t1)) ++ ( (compile t2)) ++ [[ ADD ]])
+  | t_op t1 (op_comp c) t2 =>  (( (compile t1)) ++ ( (compile t2)) ++ [[ (which_comp c)]])
+  | t_if e1 e2 e3 =>  (
+                            ( (compile e1)) ++
                             [[JUMPIFTRUE (code_length (compile e3))]] ++
-                            (from_code (compile e3)) ++
+                            ( (compile e3)) ++
                             [[JUMP (code_length (compile e2))]] ++
-                            (from_code (compile e2))
+                            ( (compile e2))
                            )
-  | t_var x => code [[VAR x]]
-  | t_app e1 e2 => code (
-                          (from_code (compile e2)) ++
-                          (from_code (compile e1)) ++
+  | t_var x => [[VAR x]]
+  | t_app e1 e2 => (
+                          ( (compile e2)) ++
+                          ( (compile e1)) ++
                           [[APPLY]]
                         )
-  | t_fun y T e1 => code [[FUN y (compile e1)]]
-  | t_let y T e1 e2 => code (
-                              (from_code (compile e1)) ++
+  | t_fun y T e1 => [[FUN y (compile e1)]]
+  | t_let y T e1 e2 => (
+                              ( (compile e1)) ++
                               [[FUN y (compile e2)]] ++
                               [[APPLY]]
                             )
-  | t_rec f T1 T2 y e1 e2 => code (
+  | t_rec f T1 T2 y e1 e2 => (
                                     (RFUN f y (compile e1)) ::
                                     (FUN f (compile e2)) ::
                                     APPLY :: nil)
@@ -899,16 +891,59 @@ Fixpoint term_size (t: term) : nat :=
   | t_if t1 t2 t3 => 1 + (term_size t1) + (term_size t2) + (term_size t3)
   | t_var _ => 1
   | t_app t1 t2 => 1 + (term_size t2) + (term_size t1)
-  | t_fun _ _ t1 => 1 + (term_size t1)
-  | t_let _ _ t1 t2 => 1 + (term_size t1) + (term_size t2)
-  | t_rec _ _ _ _ t1 t2 => 1 + (term_size t1) + (term_size t2)
+  | t_fun _ _ t1 => 2 + (term_size t1)
+  | t_let _ _ t1 t2 => 2 + (term_size t1) + (term_size t2)
+  | t_rec _ _ _ _ t1 t2 => 3 + (term_size t1) + (term_size t2)
   end.
 
 Fixpoint code_size (c: Code) : nat :=
-  code_length c.
+  match c with
+  | [] => 0
+  | INT _ :: c' => 2 + (code_size c')
+  | BOOL _ :: c' => 2 + (code_size c')
+  | JUMP _ :: c' => 2 + (code_size c')
+  | JUMPIFTRUE _ :: c' => 2 + (code_size c')
+  | VAR _ :: c' => 2 + (code_size c')
+  | FUN _ ci :: c' => 2 + (code_size ci) + (code_size c')
+  | _ => 1
+  end.
+
+
+(*  match c with
+  | INT _ => 2
+  | BOOL _ => 2
+  | JUMP _ => 2
+  | JUMPIFTRUE _ => 2
+  | VAR _ => 2
+  | FUN _ c' => 2 + (code_size c')
+  | RFUN _ _ c' => 3 + (code_size c')
+  | _ => 1
+  end. *)
+
+
+(*
+
+| INT : int -> Instruction
+  | BOOL : bool -> Instruction
+  | POP : Instruction
+  | COPY : Instruction
+  | ADD : Instruction
+  | EQ : Instruction
+  | GT : Instruction
+  | AND : Instruction
+  | NOT : Instruction
+  | JUMP : nat -> Instruction
+  | JUMPIFTRUE : nat -> Instruction
+  | VAR : ident -> Instruction
+  | FUN : ident -> Code -> Instruction
+  | RFUN : ident -> ident -> Code -> Instruction
+  | APPLY : Instruction.*)
+
+
+
 
 Lemma code_length_is_size :
-  forall c, code_size c = length (from_code c).
+  forall c, code_size c = length ( c).
 Proof.
   intros. induction c; auto. Qed.
 
@@ -927,17 +962,17 @@ Proof.
   - destruct o. assert (term_size (t_op t1 (op_arith n) t2) =
     1 + (term_size t1) + (term_size t2)). auto.
     rewrite H. clear H. assert (compile (t_op t1 (op_arith n) t2) =
-    code ((from_code (compile t1)) ++ (from_code (compile t2)) ++ [[ ADD ]])).
-    auto. rewrite H. clear H. assert (code_size (code (from_code (compile t1) ++ from_code (compile t2) ++ [[ADD]]))
+    (( (compile t1)) ++ ( (compile t2)) ++ [[ ADD ]])).
+    auto. rewrite H. clear H. assert (code_size (( (compile t1) ++  (compile t2) ++ [[ADD]]))
     = (code_size (compile t1)) + (code_size (compile t2)) + 1).
     simpl. rewrite length_distr. rewrite length_distr. simpl.
     rewrite <- code_length_is_size. rewrite <- code_length_is_size.
     rewrite plus_assoc. auto. rewrite H. clear H.
     omega.
-    assert (compile (t_op t1 (op_comp b) t2) = code ((from_code (compile t1)) ++ (from_code (compile t2)) ++ [[ (which_comp b)]])).
+    assert (compile (t_op t1 (op_comp b) t2) = (( (compile t1)) ++ ( (compile t2)) ++ [[ (which_comp b)]])).
     auto. rewrite H. clear H. assert (term_size (t_op t1 (op_comp b) t2) =
     1 + (term_size t1) + (term_size t2)). auto. rewrite H. clear H.
-    assert (code_size (code (from_code (compile t1) ++ from_code (compile t2) ++ [[(which_comp b)]]))
+    assert (code_size (( (compile t1) ++  (compile t2) ++ [[(which_comp b)]]))
     = (code_size (compile t1)) + (code_size (compile t2)) + 1).
     simpl. rewrite length_distr. rewrite length_distr. simpl.
     rewrite code_length_is_size. rewrite code_length_is_size.
@@ -945,41 +980,41 @@ Proof.
     omega.
   - assert (term_size (t_if t1 t2 t3) = 1+ term_size t1 + term_size t2 + term_size t3).
     auto. rewrite H. clear H. assert (
-    compile (t_if t1 t2 t3) = code (
-                            (from_code (compile t1)) ++
+    compile (t_if t1 t2 t3) = (
+                            ( (compile t1)) ++
                             [[JUMPIFTRUE (code_length (compile t3))]] ++
-                            (from_code (compile t3)) ++
+                            ( (compile t3)) ++
                             [[JUMP (code_length (compile t2))]] ++
-                            (from_code (compile t2))
+                            ( (compile t2))
                            )). auto. rewrite H. clear H.
    assert (
    code_size
   (code
-     (from_code (compile t1) ++
+     ( (compile t1) ++
       [[JUMPIFTRUE (code_length (compile t3))]] ++
-      from_code (compile t3) ++
+       (compile t3) ++
       [[JUMP (code_length (compile t2))]] ++
-      from_code (compile t2))) =
+       (compile t2))) =
   code_size (compile t1) + 1 + code_size (compile t3) +
   1 + code_size (compile t2)). simpl. repeat (rewrite length_distr).
   simpl. assert (length
-     (from_code (compile t3) ++
-      JUMP (code_length (compile t2)) :: from_code (compile t2)) =
-  length (from_code (compile t3)) +
-  1 + (length (from_code (compile t2)))). rewrite length_distr.
+     ( (compile t3) ++
+      JUMP (code_length (compile t2)) ::  (compile t2)) =
+  length ( (compile t3)) +
+  1 + (length ( (compile t2)))). rewrite length_distr.
   simpl. omega. rewrite H. clear H. repeat (rewrite code_length_is_size).
   omega. rewrite H. clear H. omega.
  - assert (term_size (t_app t1 t2) = 1 + (term_size t2) + (term_size t1)).
    auto. rewrite H. clear H. assert (compile (t_app t1 t2) =
-   code (
-                          (from_code (compile t2)) ++
-                          (from_code (compile t1)) ++
+   (
+                          ( (compile t2)) ++
+                          ( (compile t1)) ++
                           [[APPLY]]
                         )). auto. rewrite H. clear H.
    assert (code_size
   (code
-     (from_code (compile t2) ++
-      from_code (compile t1) ++ [[APPLY]])) =
+     ( (compile t2) ++
+       (compile t1) ++ [[APPLY]])) =
   code_size (compile t2) + code_size (compile t1) + 1).
   simpl. rewrite length_distr. rewrite length_distr. simpl.
   rewrite code_length_is_size. rewrite code_length_is_size.
@@ -987,14 +1022,14 @@ Proof.
   - assert (term_size (t_let n t1 t2 t3) = 1 + (term_size t2) + (term_size t3)).
     auto. rewrite H. clear H. assert (
     compile (t_let n t1 t2 t3) =
-    code (
-                              (from_code (compile t2)) ++
+    (
+                              ( (compile t2)) ++
                               [[FUN n (compile t3)]] ++
                               [[APPLY]])). auto. rewrite H. clear H.
   assert (
   code_size
   (code
-     (from_code (compile t2) ++
+     ( (compile t2) ++
       [[FUN n (compile t3)]] ++ [[APPLY]])) =
   code_size (compile t2) + 1 + 1). simpl.
   rewrite length_distr. assert (length (FUN n (compile t3) :: [[APPLY]])
