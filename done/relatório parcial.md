@@ -4,7 +4,7 @@ title: Relatório Parcial
 date: Maio de 2019
 bibliography: bibliography.bib
 author:
-  - Bruno Bonatto
+	- Bruno Bonatto
 ---
 
 ## Introdução

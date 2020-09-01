@@ -1,4 +1,3 @@
-
 From Coq Require Import Arith.
 From Coq Require Import Logic.FunctionalExtensionality.
 Require Import Coq.Logic.Classical_Prop.
@@ -8,6 +7,12 @@ Require Import Classical.
 From Coq Require Import omega.Omega.
 Require Import Nat.
 Require Import List.
+Require Import FunInd.
+Require Import Recdef.
+Require Export Coq.Program.Wf.
+
+
+
 
 Ltac inv H := inversion H; clear H; subst.
 
@@ -612,6 +617,7 @@ Definition int := nat.
 
 Definition lookup_list (A : Type) := list (ident * A).
 
+
 Fixpoint lookup (A : Type) (x: ident) (l : lookup_list A) : option A :=
   match l with
   | nil => None
@@ -619,15 +625,7 @@ Fixpoint lookup (A : Type) (x: ident) (l : lookup_list A) : option A :=
     else lookup A x ys
   end.
 
-
-Inductive StorableValue : Type :=
-  | st_int : int -> StorableValue
-  | st_bool : bool -> StorableValue
-  | st_clos : Environment -> ident -> list Instruction -> StorableValue
-  | st_rec_clos : Environment -> ident -> ident -> list Instruction -> StorableValue
-  with Environment : Type :=
-  | env : (lookup_list StorableValue) -> Environment
-  with Instruction : Set :=
+Inductive Instruction : Type :=
   | INT : int -> Instruction
   | BOOL : bool -> Instruction
   | POP : Instruction
@@ -643,6 +641,15 @@ Inductive StorableValue : Type :=
   | FUN : ident -> list Instruction -> Instruction
   | RFUN : ident -> ident -> list Instruction -> Instruction
   | APPLY : Instruction.
+
+
+Inductive StorableValue : Type :=
+  | st_int : int -> StorableValue
+  | st_bool : bool -> StorableValue
+  | st_clos : Environment -> ident -> list Instruction -> StorableValue
+  | st_rec_clos : Environment -> ident -> ident -> list Instruction -> StorableValue
+  with Environment : Type :=
+  | env : (lookup_list StorableValue) -> Environment.
 
 Definition Code := list Instruction.
 
@@ -666,11 +673,13 @@ Definition Stack := list StorableValue.
 Definition Dump := list (Code * Stack * Environment).
 Definition State : Type := (Code * Stack * Environment * Dump).
 
+Definition initial_state (c: Code) : State :=
+  (c, [], env [], []).
+
 
 
 Scheme sv_mut := Induction for StorableValue Sort Prop
-with env_mut := Induction for Environment Sort Prop
-with inst_mut := Induction for Instruction Sort Prop.
+with env_mut := Induction for Environment Sort Prop.
 
 
 Reserved Notation "A |> B" (at level 90, no associativity).
@@ -789,6 +798,9 @@ Definition which_comp (op : nat -> nat -> bool) :=
   | false => GT
   end.
 
+Lemma which_comp_value : forall f, which_comp f = EQ \/ which_comp f = GT.
+Proof. intros. unfold which_comp. destruct (f 1 1). left. auto. right. auto.
+Qed.
 
 
 
@@ -822,56 +834,6 @@ match t with
                                     (FUN f (compile e2)) ::
                                     APPLY :: nil)
 end.
-(*
-Reserved Notation "A |=| B" (at level 90, no associativity).
-Inductive term_eq_sv : term -> StorableValue -> Prop :=
-  | num_eq_int : forall n, t_num n |=| st_int n
-  | bool_eq_bool : forall b, t_bool b |=| st_bool b
-  | fun_eq_clos : forall 
-where " A |=| B" := (term_eq_sv A B).
-
-Inductive term :=
-  | t_num  : nat -> term
-  | t_bool : bool -> term
-  | t_op   : term -> op -> term -> term
-  | t_if   : term -> term -> term -> term
-  | t_var  : nat -> term
-  | t_app  : term -> term -> term
-  | t_fun  : nat -> type -> term -> term
-  | t_let  : nat -> type -> term -> term -> term
-  | t_rec  : nat -> type -> type -> nat -> term -> term -> term.
-
-Inductive value : term -> Prop :=
-  | val_nat : forall n : nat , value (t_num n)
-  | val_bool : forall b : bool, value (t_bool b)
-  | val_fun : forall (x: nat) (t: type), forall e: term, value (t_fun x t e).
-
-Inductive StorableValue : Type :=
-  | st_int : int -> StorableValue
-  | st_bool : bool -> StorableValue
-  | st_clos : Environment -> ident -> Code -> StorableValue
-  | st_rec_clos : Environment -> ident -> ident -> Code -> StorableValue
-  with Environment : Type :=
-  | env : (lookup_list StorableValue) -> Environment
-  with Code : Set :=
-  | code : list Instruction -> Code
-  with Instruction : Set :=
-  | INT : int -> Instruction
-  | BOOL : bool -> Instruction
-  | POP : Instruction
-  | COPY : Instruction
-  | ADD : Instruction
-  | EQ : Instruction
-  | GT : Instruction
-  | AND : Instruction
-  | NOT : Instruction
-  | JUMP : nat -> Instruction
-  | JUMPIFTRUE : nat -> Instruction
-  | VAR : ident -> Instruction
-  | FUN : ident -> Code -> Instruction
-  | RFUN : ident -> ident -> Code -> Instruction
-  | APPLY : Instruction.
-*)
 
 Inductive multi_cost_language : term -> nat -> term -> Prop :=
   | multi_costl_refl : forall (t: term), multi_cost_language t 0 t
@@ -882,6 +844,101 @@ Inductive multi_cost_code : State -> nat -> State -> Prop :=
   | multi_costc_refl : forall (s : State), multi_cost_code s 0 s
   | multi_costc_trans: forall (s1 s2 s3 : State) (n: nat),
     (s1 |> s2) -> multi_cost_code s2 n s3 -> multi_cost_code s1 (n+1) s3.
+
+Print term.
+
+Inductive term_has_recursion : term -> Prop :=
+  | rec_has_rec : forall x t1 t2 y t3 t4, term_has_recursion (t_rec x t1 t2 y t3 t4)
+  | op_has_rec1 : forall t1 op t2, term_has_recursion t1 -> term_has_recursion (t_op t1 op t2)
+  | op_has_rec2 : forall t1 op t2, term_has_recursion t2 -> term_has_recursion (t_op t1 op t2)
+  | app_has_rec1 : forall t1 t2, term_has_recursion t1 -> term_has_recursion (t_app t1 t2)
+  | app_has_rec2 : forall t1 t2, term_has_recursion t2 -> term_has_recursion (t_app t1 t2)
+  | fun_has_rec : forall x tp t, term_has_recursion t -> term_has_recursion (t_fun x tp t)
+  | let_has_rec1 : forall x tp t1 t2, term_has_recursion t1 -> term_has_recursion (t_let x tp t1 t2)
+  | let_has_rec2 : forall x tp t1 t2, term_has_recursion t2 -> term_has_recursion (t_let x tp t1 t2)
+  | if_has_rec1 : forall t1 t2 t3, term_has_recursion t1 -> term_has_recursion (t_if t1 t2 t3)
+  | if_has_rec2 : forall t1 t2 t3, term_has_recursion t2 -> term_has_recursion (t_if t1 t2 t3)
+  | if_has_rec3 : forall t1 t2 t3, term_has_recursion t3 -> term_has_recursion (t_if t1 t2 t3).
+
+Lemma not_rec_subst : forall x t1 t2, ~ term_has_recursion t1 -> ~ term_has_recursion t2 ->
+  ~ term_has_recursion ([x := t1] t2).
+Proof.
+  induction t2.
+  - intros. intro. simpl in H1. inv H1.
+  - intros. intro. simpl in H1. inv H1.
+  - intros. assert (~ term_has_recursion t2_1). intro. apply H0. apply op_has_rec1. auto.
+    assert (~ term_has_recursion t2_2). intro. apply H0. apply op_has_rec2. auto.
+    apply IHt2_1 in H1. apply IHt2_2 in H2. intro. simpl in H3. inv H3. apply H1; auto.
+    apply H2; auto. auto. auto.
+  - intros. assert (~ term_has_recursion t2_1). intro. apply H0. apply if_has_rec1. auto.
+    assert (~ term_has_recursion t2_2). intro. apply H0. apply if_has_rec2. auto.
+    assert (~ term_has_recursion t2_3). intro. apply H0. apply if_has_rec3. auto.
+    intro. simpl in H4. inv H4. apply IHt2_1 in H1. apply H1. auto. auto.
+    apply IHt2_2 in H2. apply H2. auto. auto. apply IHt2_3. auto. auto.
+    auto.
+  - intros. intro. simpl in H1. destruct (x =? n) eqn:eq. apply H; auto.
+    apply H0; auto.
+  - intros. simpl. intro. assert (~ term_has_recursion t2_1). intro. apply H0.
+    apply app_has_rec1. auto. assert (~ term_has_recursion t2_2). intro. apply H0.
+    apply app_has_rec2. auto. inv H1. apply IHt2_1; auto. apply IHt2_2; auto.
+  - intros. simpl. intro. assert (~ term_has_recursion t2). intro. apply H0.
+    apply fun_has_rec. auto. destruct (x =? n) eqn:eq. apply H0; auto. inv H1.
+    apply IHt2. auto. auto. auto.
+  - intros. simpl. intro. assert (~ term_has_recursion t2_1). intro. apply H0.
+    apply let_has_rec1; auto. assert (~ term_has_recursion t2_2). intro. apply H0.
+    apply let_has_rec2; auto. destruct (x=?n). inv H1. apply IHt2_1; auto.
+    apply H3; auto. inv H1. apply IHt2_1; auto. apply IHt2_2; auto.
+  - intros. intro. apply H0. apply rec_has_rec. Qed.
+
+Lemma not_rec_preservation : forall t t', ~ term_has_recursion t ->
+  t ---> t' -> ~ term_has_recursion t'.
+Proof.
+  induction t.
+  - intros. inv H0.
+  - intros. inv H0.
+  - intros. inv H0. assert (~ term_has_recursion t1 /\ ~ term_has_recursion t2). split;
+    intro; apply H; [apply op_has_rec1 | apply op_has_rec2]; auto. destruct H0.
+    eapply IHt1 in H0. intro. inv H2. destruct H0. eauto. destruct H1; auto. auto.
+    intro. inv H0. apply H. apply op_has_rec1. auto. eapply IHt2.
+    intro. apply H. apply op_has_rec2. auto. apply H5. auto. assert (~ term_has_recursion (t_num n1)
+    /\ ~ term_has_recursion (t_num n2)). split; intro; apply H; [apply op_has_rec1 | apply op_has_rec2];
+    auto. destruct H0. intro. inv H2. intro. inv H0.
+  - intros. assert (~ term_has_recursion t1 /\ ~ term_has_recursion t2 /\ ~ term_has_recursion t3).
+    split. intro. apply H. eapply if_has_rec1. auto. split; intro; apply H; [eapply if_has_rec2 |
+    eapply if_has_rec3]; eauto. destruct H1. destruct H2. inversion H0. subst. auto. subst.
+    auto. subst. intro. inv H4. eapply IHt1. auto. apply H8. auto.
+    apply H2; auto. apply H3; auto.
+  - intros. inv H0.
+  - intros. assert (~ term_has_recursion t1 /\ ~ term_has_recursion t2). split; intro;
+    apply H; [apply app_has_rec1 | apply app_has_rec2]; auto. destruct H1.
+    inv H0. apply not_rec_subst; auto. intro. apply H1. apply fun_has_rec. auto.
+    intro. apply IHt2 in H5. inv H0; auto. auto. intro. inv H0; auto.
+    apply IHt1 in H6. apply H6; auto. auto.
+  - intros. inv H0.
+  - intros. assert (~ term_has_recursion t2). intro. apply H. apply let_has_rec1; auto.
+    assert (~ term_has_recursion t3). intro. apply H. apply let_has_rec2; auto.
+    inv H0. apply not_rec_subst; auto. apply IHt1 in H8; auto. intro.
+    inv H0; auto.
+  - intros. assert (term_has_recursion (t_rec n t1 t2 n0 t3 t4)). apply rec_has_rec.
+    destruct H. auto. Qed.
+
+
+Theorem cost_relation : forall t n m t' c', ~ term_has_recursion t ->
+  multi_cost_language t n t' ->
+  value t' ->
+  multi_cost_code (initial_state (compile t)) m c' ->
+  state_value c' ->
+  m <= 10*n + 10.
+Proof. induction t.
+  - intros. assert (t' = (t_num n)). inv H0. auto. inv H4. subst.
+    assert (n0 = 0). inv H0. auto. inv H4. subst. simpl. inv H2. omega.
+    inv H4. inv H5. omega. inv H2.
+  - intros. inv H0. inv H2. omega. inv H0. inv H4. omega. inv H0. inv H4.
+  - intros. 
+
+
+
+
 
 Fixpoint term_size (t: term) : nat :=
   match t with
@@ -896,25 +953,25 @@ Fixpoint term_size (t: term) : nat :=
   | t_rec _ _ _ _ t1 t2 => 3 + (term_size t1) + (term_size t2)
   end.
 
-(*
 
-| INT : int -> Instruction
-  | BOOL : bool -> Instruction
-  | POP : Instruction
-  | COPY : Instruction
-  | ADD : Instruction
-  | EQ : Instruction
-  | GT : Instruction
-  | AND : Instruction
-  | NOT : Instruction
-  | JUMP : nat -> Instruction
-  | JUMPIFTRUE : nat -> Instruction
-  | VAR : ident -> Instruction
-  | FUN : ident -> Code -> Instruction
-  | RFUN : ident -> ident -> Code -> Instruction
-  | APPLY : Instruction.*)
+Fixpoint add_list (l: list nat) : nat :=
+  match l with
+  | [] => 0
+  | n :: l' => n + (add_list l')
+  end.
 
-(*Fixpoint code_size (c: Code) : nat :=
+Fixpoint inst_depth (i: Instruction) : nat :=
+  match i with
+  | FUN _ l => 1 + (add_list (map inst_depth l))
+  | RFUN _ _ l => 1 + (add_list (map inst_depth l))
+  | _ => 1
+  end.
+
+Definition code_depth (c: Code) := add_list (map inst_depth c).
+Definition code_depth_plus (c: Code) := (length c) + (add_list (map inst_depth c)).
+
+
+Function code_size (c: Code) {measure code_depth c} : nat :=
   match c with
   | [] => 0
   | INT _ :: c' => 2 + (code_size c')
@@ -923,22 +980,28 @@ Fixpoint term_size (t: term) : nat :=
   | JUMPIFTRUE _ :: c' => 2 + (code_size c')
   | VAR _ :: c' => 2 + (code_size c')
   | FUN _ ci :: c' => 2 + (code_size ci) + (code_size c')
-  | _ => 1
-  end. *)
-
-
-(*  match c with
-  | INT _ => 2
-  | BOOL _ => 2
-  | JUMP _ => 2
-  | JUMPIFTRUE _ => 2
-  | VAR _ => 2
-  | FUN _ c' => 2 + (code_size c')
-  | RFUN _ _ c' => 3 + (code_size c')
-  | _ => 1
-  end. *)
-
-
+  | RFUN _ _ ci :: c' => 3 + (code_size ci) + (code_size c')
+  | _ :: c' => 1 + (code_size c')
+  end.
+Proof.
+  - intros; subst; auto.
+  - intros; subst; auto.
+  - intros; subst; auto.
+  - intros; subst; auto.
+  - intros; subst; auto.
+  - intros; subst. unfold code_depth. simpl. omega.
+  - intros; subst; auto.
+  - intros; subst. unfold code_depth. simpl. omega.
+  - intros; subst. unfold code_depth. simpl. omega.
+  - intros; subst; auto.
+  - intros; subst; auto.
+  - intros; subst; auto.
+  - intros; subst. unfold code_depth. simpl. omega.
+  - intros; subst. unfold code_depth. simpl. omega.
+  - intros; subst; auto. unfold code_depth. simpl. omega.
+  - intros; subst; auto. unfold code_depth. simpl. omega.
+  - intros; subst; auto.
+Defined.
 
 
 Lemma length_distr : forall A (l1 l2 : list A), length (l1 ++ l2) = (length l1) + (length l2).
@@ -947,86 +1010,50 @@ Proof.
   - simpl. Search app. rewrite <- app_nil_end. auto.
   - simpl. rewrite IHl1. simpl. auto. Qed.
 
+Lemma code_size_distr1 : forall a c, code_size (a :: c) = code_size [[a]] + code_size c.
+Proof.
+  intros. induction a; rewrite code_size_equation; auto. simpl. assert (code_size [[FUN i l]] =
+  2 + (code_size l)). rewrite code_size_equation. auto. rewrite H. auto.
+  assert (code_size [[RFUN i i0 l]] = 3 + code_size l). rewrite code_size_equation. auto.
+  rewrite H. auto. Qed.
+
+Lemma code_size_distr : forall c1 c2, code_size (c1 ++ c2) = (code_size c1) + (code_size c2).
+Proof.
+  intros. induction c1; auto. destruct a; rewrite code_size_equation; simpl;
+  rewrite IHc1; rewrite code_size_distr1; auto.
+  assert (code_size [[FUN i l]] = 2 + code_size l). rewrite code_size_equation. auto.
+  rewrite H. omega. assert (code_size [[RFUN i i0 l]] = 3 + code_size l). rewrite code_size_equation.
+  auto. rewrite H. omega. Qed.
+
 
 
 Theorem length_relation :
-  forall t, (length (compile t)) < 2 * (term_size t).
+  forall t, (code_size (compile t)) < 3 * (term_size t).
 Proof.
-  intros. induction t; try (solve [simpl; omega]).
-  - destruct o. assert (term_size (t_op t1 (op_arith n) t2) =
-    1 + (term_size t1) + (term_size t2)). auto.
-    rewrite H. clear H. assert (compile (t_op t1 (op_arith n) t2) =
-    (( (compile t1)) ++ ( (compile t2)) ++ [[ ADD ]])).
-    auto. rewrite H. clear H. assert (length (( (compile t1) ++  (compile t2) ++ [[ADD]]))
-    = (length (compile t1)) + (length (compile t2)) + 1).
-    simpl.  rewrite length_distr. rewrite length_distr. simpl.
-    rewrite plus_assoc. auto. rewrite H. clear H.
-    omega.
-    assert (compile (t_op t1 (op_comp b) t2) = (( (compile t1)) ++ ( (compile t2)) ++ [[ (which_comp b)]])).
-    auto. rewrite H. clear H. assert (term_size (t_op t1 (op_comp b) t2) =
-    1 + (term_size t1) + (term_size t2)). auto. rewrite H. clear H.
-    assert (length (( (compile t1) ++  (compile t2) ++ [[(which_comp b)]]))
-    = (length (compile t1)) + (length (compile t2)) + 1).
-    simpl. rewrite length_distr. rewrite length_distr. simpl.
-    rewrite plus_assoc. auto. rewrite H. clear H.
-    omega.
-  - assert (term_size (t_if t1 t2 t3) = 1+ term_size t1 + term_size t2 + term_size t3).
-    auto. rewrite H. clear H. assert (
-    compile (t_if t1 t2 t3) = (
-                            ( (compile t1)) ++
-                            [[JUMPIFTRUE (code_length (compile t3))]] ++
-                            ( (compile t3)) ++
-                            [[JUMP (code_length (compile t2))]] ++
-                            ( (compile t2))
-                           )). auto. rewrite H. clear H.
-   assert (
-   length
-  (
-     ( (compile t1) ++
-      [[JUMPIFTRUE (code_length (compile t3))]] ++
-       (compile t3) ++
-      [[JUMP (code_length (compile t2))]] ++
-       (compile t2))) =
-  length (compile t1) + 1 + length (compile t3) +
-  1 + length (compile t2)). simpl. repeat (rewrite length_distr).
-  simpl. assert (length
-     ( (compile t3) ++
-      JUMP (code_length (compile t2)) ::  (compile t2)) =
-  length ( (compile t3)) +
-  1 + (length ( (compile t2)))). rewrite length_distr.
-  simpl. omega. rewrite H. clear H. repeat (rewrite code_length_is_size).
-  omega. rewrite H. clear H. omega.
- - assert (term_size (t_app t1 t2) = 1 + (term_size t2) + (term_size t1)).
-   auto. rewrite H. clear H. assert (compile (t_app t1 t2) =
-   (
-                          ( (compile t2)) ++
-                          ( (compile t1)) ++
-                          [[APPLY]]
-                        )). auto. rewrite H. clear H.
-   assert (length
-  (
-     ( (compile t2) ++
-       (compile t1) ++ [[APPLY]])) =
-  length (compile t2) + length (compile t1) + 1).
-  simpl. rewrite length_distr. rewrite length_distr. simpl.
-  repeat (rewrite plus_assoc). auto. rewrite H. clear H. omega.
-  - assert (term_size (t_let n t1 t2 t3) = 2 + (term_size t2) + (term_size t3)).
-    auto.
-    rewrite H. clear H. assert (
-    compile (t_let n t1 t2 t3) =
-    (
-                              ( (compile t2)) ++
-                              [[FUN n (compile t3)]] ++
-                              [[APPLY]])). auto. rewrite H. clear H.
-  assert (
-  length
-  (
-     ( (compile t2) ++
-      [[FUN n (compile t3)]] ++ [[APPLY]])) =
-  length (compile t2) + 1 + 1). simpl.
-  rewrite length_distr. assert (length (FUN n (compile t3) :: [[APPLY]])
-  = 2). auto. rewrite H. clear H. omega.
-  rewrite H. clear H. omega. Qed.
+  intros. induction t; try (solve [simpl; unfold code_size; simpl; omega]).
+  - destruct o.
+    + simpl compile. repeat (rewrite code_size_distr). simpl term_size.
+      assert (code_size [[ADD]] = 1). auto. rewrite H. omega.
+    + simpl compile. repeat (rewrite code_size_distr). simpl term_size.
+      pose (which_comp_value b). destruct o; rewrite H. cbn. omega. cbn. omega.
+  - simpl compile. rewrite code_size_distr. rewrite  code_size_distr1. rewrite code_size_distr.
+    assert (code_size (JUMP (code_length (compile t2)) :: compile t2) =
+    code_size [[JUMP (code_length (compile t2))]] + code_size (compile t2)).
+    apply code_size_distr1. rewrite H. clear H. cbn. omega.
+  - simpl compile. repeat (rewrite code_size_distr). cbn; omega.
+  - simpl compile. rewrite code_size_equation. cbn. omega.
+  - simpl compile. rewrite code_size_distr. rewrite code_size_distr1.
+    simpl term_size. assert (code_size [[FUN n (compile t3)]] = 2 + code_size (compile t3)).
+    rewrite code_size_equation. auto. rewrite H; clear H. cbn. omega.
+  - simpl compile. rewrite code_size_distr1. assert (code_size (FUN n (compile t4) :: [[APPLY]]) =
+    code_size [[FUN n (compile t4)]] + code_size [[APPLY]]). apply code_size_distr1.
+    rewrite H; clear H. assert (code_size [[RFUN n n0 (compile t3)]] = 3 + code_size (compile t3)).
+    rewrite code_size_equation. auto. rewrite H; clear H. assert (code_size [[FUN n (compile t4)]] =
+    2 + code_size (compile t4)). rewrite code_size_equation; auto. rewrite H; clear H.
+    cbn; omega.
+Qed.
+
+
 
 
 

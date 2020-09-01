@@ -8,42 +8,32 @@ author:
 
 ## Introdução
 
+A análise estática é a etapa do processo de compilação que visa obter informações sobre programas sem que estes sejam executados.
+Essas informações, tipicamente, são usadas para guiar transformações com o objetivo de melhorar o desempenho de programas.
+O objetivo deste trabalho é o estudo e desenvolvimento dessas técnicas de análise, especialmente análises de tempo de gasto de energia.
 
-
-- motivação
-- resultados anteriores
-- plano anterior
-- resultados obtidos
-- estrutura do texto
-
-## Sumário
-Este documento descreve o progresso feito pelo aluno Bruno de Freitas Bonatto durante o período de Maio de 2019 até Abril de 2020 sob a orientação do professor Dr. Álvaro Freitas Moreira.
-Durante esse período o aluno: formalizou a máquina abstrata SSM1, criada na disciplina de semântica formal para a linguagem L1, na ferramenta Coq[@CoqManual];
-implementou uma função de compilação da L1 para essa máquina;
-fez uma pesquisa bibliográfica sobre técnicas de análise estática de programas;
-criou uma métrica básica de tamanho e tempo de execução para a linguagem L1 e para a máquina SSM1;
-e participou do WEIT[@WEIT].
+Em etapas anteriores do projeto formalizamos a L1, uma linguagem funcional, no assistente de provas Coq[@CoqManual] e provamos algumas propriedades dessa linguagem.
+Para essa etapa do projeto tínhamos planejado uma maior pesquisa sobre o análise estática, formalizar a máquina abstrata SSM1, que executa código compilado da L1, em Coq e
+a implementação dessa função de compilação. Durante esse período da bolsa concluímos todos os objetivos, o texto a seguir detalha os resultados obtidos.
 
 ## Resultados
-- formalização SSM1
-- compilação
-- biblioteca Big-O
-- relação de custo
-- relação de tamanho
 
+### Formalização SSM1
 
+A máquina abstrata SSM1 foi criada na cadeira de Semântica Formal na UFRGS como exemplo de máquina abstrata, baseada na máquina SECD[@Landin] ela
+permite a execução de código compilado da linguagem L1 de forma assemelhada à código executável de outras linguagens.
+A formalização da SSM1 nos permite provar propriedades sobre a execução de código L1 e sobre seu comportamento.
 
-Com a formalização da SSM1 e a implementação de uma função de compilação temos agora um objeto mais concreto sobre o qual fazer análise de performance.
-Para esse fim implementamos duas medidas simples de performance para a L1 e SSM1, sendo estas a contagem de transições da relação smallstep da semântica operacional e
-a contagem de passos que a SSM1 faz durante sua execução.
-Depois da formalização da SSM1 provamos que o tamanho do código compilado é limitado por duas vezes o tamanho do termo L1.
+### Compilação
+
+A função de compilação de código L1 para código executável SSM1 é bem definida nas notas de aula da cadeira de Semântica Formal,
+com a implementação dela em Coq podemos utilizá-la em provas e provar a sua corretude.
+
 
 ### Publicações
-- WEIT
-- Salão de iniciação científica
 
-Durante os dias de 9 a 11 de Outubro de 2019 o aluno foi à Passo Fundo com apoio financeiro da FAPERGS para participar do Workshop Escola de Informática Teórica.
-Nesse evento o aluno assistiu a todas as palestras oferecidas, participou dos minicursos de semântica formal, lógica fuzzy e introdução à data science.
-O aluno apresentou uma versão preliminar do trabalho publicado nos anais do evento, estes podem ser encontrados no site do WEIT.
+Durante este período da bolsa participamos do Workshop Escola de Informática Teórica 2019[@WEIT] em Passo Fundo,
+com uma versão preliminar do trabalho sendo publicada nos anais da conferência.
+E apresentamos nosso progresso no Salão de Iniciação Cientifica da UFRGS.
 
 ## Referências
