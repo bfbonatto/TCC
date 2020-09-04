@@ -934,7 +934,7 @@ Proof. induction t.
     assert (n0 = 0). inv H0. auto. inv H4. subst. simpl. inv H2. omega.
     inv H4. inv H5. omega. inv H2.
   - intros. inv H0. inv H2. omega. inv H0. inv H4. omega. inv H0. inv H4.
-  - intros. 
+  - intros.
 
 
 

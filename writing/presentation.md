@@ -41,6 +41,9 @@ Finally we can conclude that given a queue with $|L_{in}|$ equal to $k$,
 the number of list operations in a sequence of $m$  $enqueue$ and $n$  $dequeue$
 operations is less than $3 \cdot m + n + 2\cdot k$
 
+### Automatizing Amortized Analysis
+
+
 
 ### Examples
 
