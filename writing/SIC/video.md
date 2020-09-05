@@ -1,6 +1,6 @@
 ---
-author: 
-	- Bruno de Freitas Bonatto
+author:
+	- Bruno Bonatto
 	- Álvaro Moreira
 	- Rodrigo Machado
 title: Estudando análise estática de programas com Coq
@@ -59,7 +59,7 @@ Essa ferramenta analisa programas escritos na linguagem OCAML e para várias mé
 
 ::: notes
 Durante essa nova etapa do projeto implementamos a máquina abstrata SSM1 desenvolvida na cadeira de semântica formal da UFRGS, que é baseada na máquina SECD, na linguagem COQ.
-::: 
+:::
 
 ## Formalização SSM1
 
@@ -99,7 +99,7 @@ Inductive StorableValue : Type :=
 Definition Code := list Instruction.
 Definition Stack := list StorableValue.
 Definition Dump := list (Code * Stack * Environment).
-Definition State : Type := 
+Definition State : Type :=
 	(Code * Stack * Environment * Dump).
 ~~~
 
@@ -151,3 +151,8 @@ Theorem cost_relation : forall t n m t' c',
 ~~~
 
 # Obrigado pela atenção
+
+## Patrocínio
+
+![inf logo](Identidade Visual INF UFRGS.png){ height=40% width=40% }
+![fapergs logo](Identidade Visual FAPERGS.png){ height=40% width=40% }
