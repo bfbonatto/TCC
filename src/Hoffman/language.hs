@@ -9,7 +9,7 @@ data Term = TBool Bool
 			| TOp Term (Int -> Int -> Int) Term
 			| TIf Term Term Term
 			| TVar Var
-			| TAbs Var Type Term
+			-- | TAbs Var Type Term
 			| TApp Term Term
 			| TEmpty
 			| TList Term Term
@@ -34,7 +34,7 @@ bigstep (TIf t1 t2 t3) = do
 	VBool b <- bigstep t1
 	if b then bigstep t2 else bigstep t3
 
-bigstep (TAbs v _ t) = Just (VFun v t)
+-- bigstep (TAbs v _ t) = Just (VFun v t)
 
 bigstep (TApp t1 t2) = do
 	VFun x t <- bigstep t1
@@ -68,7 +68,7 @@ subst _ TEmpty _ = TEmpty
 subst x (TList t1 t2) arg = TList (subst x t1 arg) (subst x t2 arg)
 subst x (TCase t1 t2 t3) arg = TCase (subst x t1 arg) (subst x t2 arg) (subst x t3 arg)
 subst x (TApp t1 t2) arg = TApp (subst x t1 arg) (subst x t2 arg)
-subst x t@(TAbs y typeY body) arg = if x == y then t else TAbs y typeY (subst x body arg)
+-- subst x t@(TAbs y typeY body) arg = if x == y then t else TAbs y typeY (subst x body arg)
 
 data Type = TypeNat | TypeBool | TypeList | TypeFun Type Type deriving Eq
 
@@ -90,10 +90,10 @@ typecheck g (TIf t1 t2 t3) = do
 
 typecheck g (TVar x) = g Map.!? x
 
-typecheck g (TAbs x t body) = do
-	let g' = Map.insert x t g
-	t' <- typecheck g' body
-	return $ TypeFun t t'
+-- typecheck g (TAbs x t body) = do
+-- 	let g' = Map.insert x t g
+-- 	t' <- typecheck g' body
+-- 	return $ TypeFun t t'
 
 typecheck g (TApp t1 t2) = do
 	TypeFun type1 type2 <- typecheck g t1
