@@ -18,8 +18,7 @@ type Var = String
 
 type Declarations = Map.Map Var Value
 
-data Value = VNum Int | VBool Bool | VFun Var Term | VEmpty | VList Value Value
-
+data Value = VNum Int | VBool Bool | VFun Var Type Term | VEmpty | VList Value Value
 
 bigstep :: Term -> Declarations -> Maybe Value
 bigstep (TBool b) _ = Just (VBool b)
@@ -35,7 +34,7 @@ bigstep (TIf t1 t2 t3) dec = do
 	if b then bigstep t2 dec else bigstep t3 dec
 
 bigstep (TApp (TVar f) t) dec = do
-	VFun x t' <- Map.lookup f dec
+	VFun x _ t' <- Map.lookup f dec
 	flip bigstep dec $ subst x t t'
 
 bigstep (TApp _ _) _ = Nothing

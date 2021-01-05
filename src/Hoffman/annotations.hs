@@ -1,11 +1,12 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS -fno-warn-tabs #-}
 
 module Annotations where
 
 import Language
-import qualified Data.Map.Strict as Map
+import Control.Monad.State
 
-data ResourceConstants =
+data ResourceConstant =
 	KNil
 	| KBool
 	| KInt
@@ -17,10 +18,44 @@ data ResourceConstants =
 	| KCons
 	| KCaseN1 | KCaseN2 | KCaseC1 | KCaseC2 deriving Show
 
-rc2int _ = 1
+data ResourceMetric = ResourceMetric String (ResourceConstant -> Int)
 
-data A = ABool | AInt | AL Int A | Unit deriving Show
-data F = FFun A Int Int A deriving Show
+data Constraint =
+	  CLeq [CFact] [CFact]
+	| CGeq [CFact] [CFact]
+	| CEq  [CFact] [CFact]
 
-type AnnotatedContext = Map.Map Var A
-type FunctionContext = Map.Map Var F
+data CFact = CVar Int | CConst Int
+
+consume :: ResourceConstant -> Int -> Int -> ResourceMetric -> State TypeState ()
+consume k v1 v2 (ResourceMetric _ metric) = constraint $ CGeq [CVar v1] [CConst (metric k), CVar v2]
+
+constraint :: Constraint -> State TypeState ()
+constraint cs = constraintss [cs]
+
+constraintss :: [Constraint] -> State TypeState ()
+constraintss cs = do
+	ts@TypeState{ constraints = current } <- get
+	put $ ts{constraints = cs ++ current}
+	return ()
+
+
+data TypeState = TypeState  { topLevelDecs :: Declarations
+							, constraints :: [Constraint]
+							, varCounter :: Int
+							, resMetric :: ResourceMetric
+							}
+
+freshVar :: State TypeState Int
+freshVar = do
+	ts@TypeState{ varCounter = n } <- get
+	put ts{ varCounter = n+1 }
+	return n
+
+data AType =   AUnit
+			 | ABool
+			 | AInt
+			 | L Int AType
+
+annotateE :: Term -> State TypeState (Maybe AType)
+annotateE = undefined
