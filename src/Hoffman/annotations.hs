@@ -7,7 +7,7 @@ import Language
 import Control.Monad.State
 
 data ResourceConstant =
-	KNil
+	  KNil
 	| KBool
 	| KInt
 	| KOp
