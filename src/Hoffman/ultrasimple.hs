@@ -57,6 +57,17 @@ data Constraint = CGeq [CFact] [CFact]
 
 data CFact = CVar Int | CConst Int
 
+instance Show CFact where
+	show (CVar n) = 'x' : show n
+	show (CConst n) = show n
+
+instance Show Constraint where
+	show (CGeq l1 l2) = s l1 ++ " >= " ++ s l2
+		where
+			s [] = ""
+			s [n] = show n
+			s (x:xs) = show x ++ " + " ++ s xs
+
 data CState = CState { constraints :: [Constraint], varCounter :: Int, resMetric :: ResourceMetric }
 
 freshVar :: State CState Int
@@ -95,8 +106,12 @@ annotate (SLFreeLet x e exp) env = do
 	let env' = Map.insert x t env
 	annotate exp env'
 
---data ShareLetTerm =
---	  SLVar Int
---	| SLFreeLet Int ShareLetTerm ShareLetTerm
---	| SLInt Int
---	| SLAdd ShareLetTerm ShareLetTerm deriving (Eq, Show)
+
+annotateProg :: Expr -> ResourceMetric -> [Constraint]
+annotateProg prog metric = case t of
+							Nothing -> []
+							_		-> constraints state'
+	where
+		(slt, _) = (runState $ transform prog) 0
+		initialState = CState [] 0  metric
+		(t, state') = (runState . runMaybeT $ annotate slt Map.empty) initialState
