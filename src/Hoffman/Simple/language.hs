@@ -2,9 +2,6 @@
 
 module Language where
 
-import Control.Monad.State
-import Data.List
-
 data Exp =
 	  ENum Int
 	| EBinOp Exp BinOp Exp
@@ -12,43 +9,41 @@ data Exp =
 	| EBool Bool
 	| ECond Exp Exp Exp
 	| EVar Var
-	| EApp FunId Exp
+	| ELet Var Exp Exp
+	| EApp FunId Exp deriving (Eq, Show)
 
 type Var           = Int
-data BinOp         = NtNB NatToNatBin | BtBB BoolToBoolBin | NtBB NatToBoolBin
-data NatToNatBin   = Add | Sub | Mult
-data NatToBoolBin  = Eq | LessEq
-data BoolToBoolBin = And | Or
-data UnOp          = Not
+data BinOp         = NtNB NatToNatBin | BtBB BoolToBoolBin | NtBB NatToBoolBin deriving (Eq, Show)
+data NatToNatBin   = Add | Sub | Mult deriving (Eq, Show)
+data NatToBoolBin  = Eq | LessEq deriving (Eq, Show)
+data BoolToBoolBin = And | Or deriving (Eq, Show)
+data UnOp          = Not deriving (Eq, Show)
 
-class TypedOperation a where
+class Typed a where
 	getTypes :: a -> [Type]
+	getTypes a = [typeOf a]
+	typeOf :: a -> Type
+	typeOf = last . getTypes
 
-resultType :: (TypedOperation op) => op -> Type
-resultType = last . getTypes
-
-instance TypedOperation BinOp where
+instance Typed BinOp where
 	getTypes (NtNB op) = getTypes op
 	getTypes (BtBB op) = getTypes op
 	getTypes (NtBB op) = getTypes op
 
-instance TypedOperation NatToNatBin where
+instance Typed NatToNatBin where
 	getTypes _ = [TInt, TInt, TInt]
 
-instance TypedOperation NatToBoolBin where
+instance Typed NatToBoolBin where
 	getTypes _ = [TInt, TInt, TBool]
 
-instance TypedOperation BoolToBoolBin where
+instance Typed BoolToBoolBin where
 	getTypes _ = [TBool, TBool, TBool]
 
-instance TypedOperation UnOp where
+instance Typed UnOp where
 	getTypes _ = [TBool, TBool]
 
-typeMach :: (TypedOperation op) => op -> [Type] -> Bool
+typeMach :: (Typed op) => op -> [Type] -> Bool
 typeMach op l = getTypes op == l
-
-finalType :: (TypedOperation op) => op -> Type
-finalType = last . getTypes
 
 -- I wanted to use Vars in every variable-only position, but, during
 -- the transformation into Share-Let-Normal form we need to consult
@@ -62,47 +57,23 @@ data TExp =
 	| TECond TExp TExp TExp Type
 	| TEVar Var Type
 	| TEApp FunId TExp Type
-	| TEShare Var Var Var TExp Type -- TEShare y y' x e T means x ~> y,y'
+	-- | TEShare Var Var Var TExp Type -- TEShare y y' x e T means x ~> y,y'
+	| TEShare [Var] Var TExp Type -- one share is better than many piece-wise shares
 	| TELet Kind Var TExp TExp Type -- TELet kind x e e'  means (free)let x be e in e'
+	deriving (Eq, Show)
 
-data Type  = TInt | TBool deriving Eq
-data Kind  = Free | Normal
+data Type  = TInt | TBool deriving (Eq, Show)
+data Kind  = Free | Normal deriving (Eq, Show)
 type FunId = String
 -- Disallowing function declaration inside expressions simplifies the analysis
 
-type SLTState = Int
-
-freshVar :: State SLTState Var
-freshVar = do
-	n <- get
-	put $ n+1
-	return n
-
-freshVars :: Int -> State SLTState [Var]
-freshVars n = sequence [ freshVar | _ <- [1..n] ]
-
-freeVars :: TExp -> [Var]
-freeVars (TENum _)            = []
-freeVars (TEBool _)           = []
-freeVars (TEVar x _)          = [x]
-freeVars (TEApp _ e _)        = freeVars e
-freeVars (TEUnOp _ e _)       = freeVars e
-freeVars (TEBinOp e1 _ e2 _)  = freeVars e1 `union` freeVars e2
-freeVars (TELet _ x e1 e2 _)  = (freeVars e1 `union` freeVars e2) \\ [x]
-freeVars (TECond e e1 e2 _)   = freeVars e `union` freeVars e1 `union` freeVars e2
-freeVars (TEShare y y' x e _) = [x] `union` (freeVars e \\ [y,y'])
-
-freeLets :: Monad m => [(Var, TExp)] -> TExp -> Type -> m TExp
-freeLets [] exp _             = return exp
-freeLets ((x,e):lets) exp typ = do
-	exp' <- freeLets lets exp typ
-	return $ TELet Free x e exp' typ
-
-transform :: Exp -> State SLTState TExp
-transform (ENum n)          = return $ TENum n
-transform (EBool b)         = return $ TEBool b
-transform (EBinOp e1 op e2) = do
-	e1'			<- transform e1
-	e2'			<- transform e2
-	[n1,n2]		<- freshVars 2
-	undefined
+instance Typed TExp where
+	typeOf (TENum _)         = TInt
+	typeOf (TEBool _)        = TBool
+	typeOf (TEUnOp _ _ t)    = t
+	typeOf (TEBinOp _ _ _ t) = t
+	typeOf (TECond _ _ _ t)  = t
+	typeOf (TEVar _ t)       = t
+	typeOf (TEShare _ _ _ t) = t
+	typeOf (TELet _ _ _ _ t) = t
+	typeOf (TEApp _ _ t)     = t
