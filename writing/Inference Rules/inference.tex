@@ -1,0 +1,235 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bussproofs}
+\usepackage{syntax}
+\usepackage{turnstile}
+
+\title{Regras de Inferência}
+\author{Bruno Bonatto}
+\date{Fevereiro 2021}
+
+\begin{document}
+
+\maketitle
+
+\section{ultrasimple}
+\subsection{Gramática}
+
+\begin{grammar}
+	<Exp> ::= `Enum' n
+	\alt `EPlus' <Exp> <Exp>
+\end{grammar}
+
+Em \textit{let-normal-form}:
+\begin{grammar}
+	<SLT> ::= `SLVar' x
+	\alt `SLFreeLet' x <SLT> <SLT>
+	\alt `SLInt' n
+	\alt `SLAdd' x y
+\end{grammar}
+
+Conversão para \textit{let-normal-form}, com $e \rightsquigarrow e'$ indicando que a expressão $e$ se transforma na
+expressão $e'$ agora em \textit{let-normal-form}.
+
+\begin{prooftree}
+	\AxiomC{}
+	\UnaryInfC{ENum $n\rightsquigarrow$ SLInt $n$}
+\end{prooftree}
+
+\begin{prooftree}
+	\AxiomC{$e_1 \rightsquigarrow e_1'$}
+	\noLine
+	\UnaryInfC{$e_2 \rightsquigarrow e_2'$}
+	\AxiomC{$x_1$ fresh}
+	\noLine
+	\UnaryInfC{$x_2$ fresh}
+	\BinaryInfC{EPlus $e_1$ $e_2$ $\rightsquigarrow$ SLFreeLet $x_1$ $e_1'$ (SLFreeLet $x_2$ $e_2'$}
+	\noLine
+	\UnaryInfC{(SLAdd (SLVar $x_1$) (SLVar $x_2$)))}
+\end{prooftree}
+
+\subsection{Coleta de \textit{constraints}}
+
+Com,
+
+\begin{equation}
+	\Gamma \vdash e : T\, q\: |\: L
+\end{equation}
+
+Significando que: para o ambiente $\Gamma$, um mapa parcial de variáveis para tipos;
+a expressão $e$ tem o tipo $T$ com variável associada $q$, e gera a lista $L$ de constraints, onde constraints
+são inequações entre somas de variáveis e constantes, por exemplo: $x_1 \geq x_2 + KInt$.
+
+Regras de inferência para a coleta de \textit{constraints}:
+
+\begin{prooftree}
+\AxiomC{$q'$ fresh}
+\AxiomC{$q$ fresh}
+\LeftLabel{SLInt:}
+\BinaryInfC{$\Gamma\vdash$ SLInt $n$ $:$ AInt $q$ $|$ [$q \geq q' + KInt$]}
+\end{prooftree}
+
+\begin{prooftree}
+	\AxiomC{$\Gamma (x_1) =$ AInt $q_1$}
+	\noLine
+	\UnaryInfC{$\Gamma (x_2) =$ AInt $q_2$}
+	\AxiomC{$q'$ fresh}
+	\noLine
+	\UnaryInfC{$q$ fresh}
+	\LeftLabel{SLAdd:}
+	\BinaryInfC{$\Gamma\vdash$ SLAdd (SLVar $x_1$ ) (SLVar $x_2$ ) $:$ AInt $q$}
+	\noLine
+	\UnaryInfC{$|$ [$q' \geq q_1 + q_2$; $q \geq q' + KPlus$]}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\Gamma\vdash$ $e1$ $:$ $T_1\, q_1\: |\: L_1$}
+\AxiomC{$x:(T_1\, q_1),\Gamma \vdash$ $e2$ $:$ $T_2\, q_2\: |\: L_2$}
+\LeftLabel{SLFreeLet:}
+\BinaryInfC{$\Gamma \vdash$ SLFreeLet $x$ $e1$ $e2$ $:$ $T_2\, q_2\: |\: L_1 ++ L_2$}
+\end{prooftree}
+
+\begin{prooftree}
+	\AxiomC{$\Gamma (x) = T\, q$}
+	\LeftLabel{SLVar:}
+	\UnaryInfC{$\Gamma \vdash$ SLVar $x$ $:$ $T\, q\: |\: []$}
+\end{prooftree}
+
+\section{ultrasimple com \textit{let} e variáveis}
+
+\subsection{Gramática}
+
+\begin{grammar}
+	<Exp> ::= `ENum' n
+	\alt `EPlus' <Exp> <Exp>
+	\alt `ELet' x <Exp> <Exp>
+	\alt `EVar' x
+\end{grammar}
+
+Em let-normal-form:
+\begin{grammar}
+	<TExp> ::= `TENum' n
+	\alt `TEPlus' <Exp> <Exp>
+	\alt `TELet' <Kind> x <Exp> <Exp>
+	\alt `TEVar' <Kind> x
+	\alt `TEShare' y$_1$ y$_2$ x <Exp>
+
+	<Kind> ::= `Free'
+	\alt `Normal'
+\end{grammar}
+
+Para transformar fazemos uso da seguinte notação
+
+\begin{equation}
+	e \rightsquigarrow e'
+\end{equation}
+
+Indicando que: a Exp $e$ se transforma na TExp $e'$.
+
+Conversão para \textit{let-normal-form} como regras de inferência:
+
+\begin{prooftree}
+	\AxiomC{}
+	\UnaryInfC{ENum $n \rightsquigarrow$ TENum $n$}
+\end{prooftree}
+
+\begin{prooftree}
+	\AxiomC{}
+	\UnaryInfC{EVar $x \rightsquigarrow$ TEVar Normal $x$}
+\end{prooftree}
+
+Para converter os outros contrutores da linguagem precisamos utilizar o sharing explicito vindo do `TEShare', para isso são introduzidas três funções:
+
+\begin{align}
+	\textrm{shareVar}(x, e_1, e_2) = \textrm{let } (y_1, y_2) &\textrm{ be } (\textrm{fresh}(), \textrm{fresh}()) \textrm{ in } \\
+	((\lambda e . \textrm{TEShare } y_1\, y_2 \, x\: e)&,\: e_1[x:=y_1],\: e_2[x:=y_2]) \nonumber
+\end{align}
+
+Ou seja, dada uma variável $x$ e duas TExp's $e_1$ e $e_2$, retornamos uma função que insere um termo depois de um TEShare e as duas
+TExp's com todas as instâncias livres de $x$ substituídas por, respectivamente, $y_1$ e $y_2$.
+
+\begin{align}
+	\textrm{shareVars}([], e_1, e_2) &= (\textrm{id}, e_1, e_2) \nonumber \\
+	\textrm{shareVars}((x:xs), e_1, e_2) &= \textrm{ let } (s, e_{1}', e_{2}') \textrm{ be shareVars}(xs, e_1, e_2) \textrm{ in } \\
+	\textrm{ let }(s', e_{1}'', e_{2}'') &\textrm{ be shareVar}(x,e_{1}',e_{2}') \textrm{ in } (s' \cdot s, e_{1}'', e_{2}'') \nonumber
+\end{align}
+
+\begin{equation}
+	\textrm{shareFreeVars}(e_1,e_2) = \textrm{shareVars}(\textrm{freevars}(e_1)\cap \textrm{freevars}(e_2), e_1, e_2)
+\end{equation}
+
+Agora podemos escrever o resto das regras para a transformação em \textit{let-normal-form}:
+
+\begin{prooftree}
+	\AxiomC{$e_1 \rightsquigarrow e_1'$}
+	\noLine
+	\UnaryInfC{$e_2 \rightsquigarrow e_2'$}
+	\AxiomC{$n_1$ fresh}
+	\noLine
+	\UnaryInfC{$n_2$ fresh}
+	\AxiomC{$(s, e_1'', e_2'') =$ shareFreeVars$(e_1', e_2')$}
+	\TrinaryInfC{EPlus $e_1$ $e_2$ $\rightsquigarrow$}
+	\noLine
+	\UnaryInfC{$s$(TELet Free $n_1$ $e_1''$ (TELet Free $n_2$ $e_2''$}
+	\noLine
+	\UnaryInfC{ (TEPlus (TEVar Free $n_1$) (TEVar Free $n_2$))))}
+\end{prooftree}
+
+\begin{prooftree}
+	\AxiomC{$e_1 \rightsquigarrow e_1'$}
+	\noLine
+	\UnaryInfC{$e_2 \rightsquigarrow e_2'$}
+	\AxiomC{c $=$ freevars($e_1'$)$\cap$freevars($e_2'$)$-\{x\}$}
+	\noLine
+	\UnaryInfC{$(s, e_1'', e_2'') = $ shareVars(c$,e_1', e_2'$)}
+	\BinaryInfC{ELet $x$ $e_1$ $e_2$ $\rightsquigarrow$ $s$(TELet Normal $x$ $e_1''$ $e_2''$)}
+\end{prooftree}
+
+Onde:
+
+\begin{align}
+	&\textrm{freevars}(\textrm{TENum } n) &= \{\} \nonumber \\
+	&\textrm{freevars}(\textrm{TEVar } k\: x) &= \{x\} \nonumber \\
+	&\textrm{freevars}(\textrm{TEPlus } e_1\: e_2) &= \textrm{freevars}(e_1) \cup \textrm{freevars}(e_2) \\
+	&\textrm{freevars}(\textrm{TELet } k\: x\: e_1\: e_2) &= \textrm{freevars}(e_1)\cap \textrm{freevars}(e_2)-\{x\} \nonumber \\
+	&\textrm{freevars}(\textrm{TEShare } y_1\: y_2\: x\: e) &= \{x\} \cup \textrm{freevars}(e) -\{y_1\} -\{y_2\} \nonumber
+\end{align}
+
+\subsection{Coleta de \textit{constraints}}
+
+Com
+
+\begin{equation}
+	\Gamma \sststile{q'}{q} e : T\, | L
+\end{equation}
+
+Significando que para o ambiente $\Gamma$ a TExp $e$ possui o tipo $T$ e gera a lista de \textit{constraints} $L$, e $q$ é quantidade
+de unidades de recurso para avaliar a expressão $e$ e $q'$ é a quantidade de unidades de recurso após avaliar $e$.
+
+Temos:
+
+\begin{prooftree}
+	\AxiomC{$q$ fresh}
+	\noLine
+	\UnaryInfC{$q'$ fresh}
+	\AxiomC{$\Gamma(x) = T$}
+	\BinaryInfC{$\Gamma \sststile{q'}{q}$ TEVar $x$ $: T\: |\: [q \geq q' + KVar]$}
+\end{prooftree}
+
+%\begin{grammar}
+%	<Exp> ::= `ENum' n
+%	\alt `EPlus' <Exp> <Exp>
+%	\alt `ELet' x <Exp> <Exp>
+%	\alt `EVar' x
+%\end{grammar}
+
+	%<TExp> ::= `TENum' n
+	%\alt `TEPlus' <Exp> <Exp>
+	%\alt `TELet' <Kind> x <Exp> <Exp>
+	%\alt `TEVar' <Kind> x
+	%\alt `TEShare' y$_1$ y$_2$ x <Exp>
+
+\end{document}

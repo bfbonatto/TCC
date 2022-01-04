@@ -135,15 +135,16 @@ annotate (SLInt _) _ = do
 annotate (SLAdd x1 x2) env = do
 	(AInt q1) <- MaybeT . return $ env Map.!? x1
 	(AInt q2) <- MaybeT . return $ env Map.!? x2
-	q' <- lift freshVar
 	q <- lift freshVar
+	q' <- lift freshVar
 	lift $ emit $ CGeq [CVar q'] [CVar q1, CVar q2]
 	lift $ consume KPlus q q'
 	return $ AInt q
-annotate (SLFreeLet x e exp) env = do
-	t <- annotate e env
+annotate (SLFreeLet x e1 e2) env = do
+	t <- annotate e1 env
 	let env' = Map.insert x t env
-	annotate exp env'
+	annotate e2 env'
+annotate (SLVar x) env = MaybeT . return $ env Map.!? x
 
 
 annotateProg :: Expr -> ResourceMetric -> Constraints

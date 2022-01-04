@@ -1,0 +1,14 @@
+EPlus 1 1
+
+~>
+TELet Free x1 1 (TELet Free x2 1 (
+    TEPlus (TEVar Free x1) (TEVar Free x2)))
+
+G |- TEVar Free x1 => q1, q2
+
+onde q1 é a quantidade de recursos
+para avaliar x1, e q2 é a quantidade de recursos depois de avaliar x1
+
+G |- e1 : Int (q1,q2)  G |- e2 : Int (q1', q2') q fresh q' fresh
+-----------------------------------------
+G |- TEPlus e1 e2 : Int [q >= q1 + q1' + KAdd1 ; q' >= q2 + q2' + KInt]

@@ -14,7 +14,6 @@ instance Show SLTState where
 
 initialState = SLTState 0 M.empty
 
-
 freshVar :: State SLTState Var
 freshVar = do
 	s@SLTState{ varCounter = n } <- get
@@ -70,9 +69,7 @@ shareVars (x:xs) ts = do
 	return (ts2, fs' . fs)
 
 shareFreeVars :: [TExp] -> State SLTState ([TExp], TExp -> TExp)
-shareFreeVars ts = do
-	(ts', f) <- shareVars (foldr1 intersect (map freeVars ts)) ts
-	return (ts', f)
+shareFreeVars ts = shareVars (foldr1 intersect (map freeVars ts)) ts
 
 setTypeOf :: Var -> Type -> State SLTState ()
 setTypeOf x t = do
@@ -98,15 +95,15 @@ transform (EBinOp e1 op e2) = do
 	let term = TEBinOp (TEVar n1 (typeOf e1')) op (TEVar n2 (typeOf e2')) typ
 	term' <- freeLets [(n1,s1), (n2,s2)] term typ
 	return $ f term'
-transform (ELet x e1 e2) = do
-	x' <- freshVar
-	e1' <- transform e1
-	setTypeOf x' (typeOf e1')
-	e2' <- transform e2
-	let e2'' = subst e2' x x'
-	let commonVars = (freeVars e1' `intersect` freeVars e2'') \\ [x]
-	([s1,s2], f) <- shareVars commonVars [e1', e2'']
-	return $ f $ TELet Normal x s1 s2 (typeOf e2'')
+transform (ELet x e1 e2) = undefined
+	-- x' <- freshVar
+	-- e1' <- transform e1
+	-- setTypeOf x' (typeOf e1')
+	-- e2' <- transform e2
+	-- let e2'' = subst e2' x x'
+	-- let commonVars = (freeVars e1' `intersect` freeVars e2'') \\ [x]
+	-- ([s1,s2], f) <- shareVars commonVars [e1', e2'']
+	-- return $ f $ TELet Normal x' s1 s2 (typeOf e2'')
 transform (EVar x) = do
 	gamma <- gets varContext
 	t <- case M.lookup x gamma of
